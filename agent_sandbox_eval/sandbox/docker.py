@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import time
@@ -45,6 +46,10 @@ class DockerSandbox:
             "--rm",
             "--network",
             "bridge" if self.task.limits.network else "none",
+            "--user",
+            _host_user(),
+            "--env",
+            "HOME=/tmp",
             "--memory",
             f"{self.task.limits.memory_mb}m",
             "--cpus",
@@ -92,3 +97,11 @@ def _to_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value
+
+
+def _host_user() -> str:
+    getuid = getattr(os, "getuid", None)
+    getgid = getattr(os, "getgid", None)
+    if getuid is None or getgid is None:
+        return "1000:1000"
+    return f"{getuid()}:{getgid()}"
