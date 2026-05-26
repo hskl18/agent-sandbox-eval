@@ -1,0 +1,22 @@
+schema_version: 1
+id: unique-values-001
+benchmark: terminal
+title: Count unique values
+instruction: Count unique non-empty values in values.txt and write unique=4 to unique.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: "grep -q '^unique=4$' unique.txt"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [files, metrics]
+solution:
+  commands:
+    - python -c "vals={line.strip() for line in open('values.txt') if line.strip()}; print('unique=' + str(len(vals)))" > unique.txt
+

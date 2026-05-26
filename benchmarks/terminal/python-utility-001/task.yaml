@@ -1,0 +1,29 @@
+schema_version: 1
+id: python-utility-001
+benchmark: terminal
+title: Write a small Python utility
+instruction: Create slugify.py so python slugify.py "Hello World!" prints hello-world.
+workspace: workspace
+setup: []
+allowed_tools: [shell, file_write]
+success:
+  type: command
+  command: python slugify.py "Hello World!" | grep -q '^hello-world$'
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [python, cli]
+solution:
+  commands:
+    - |
+      cat > slugify.py <<'PY'
+      import re
+      import sys
+
+      text = " ".join(sys.argv[1:])
+      print(re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-"))
+      PY
+

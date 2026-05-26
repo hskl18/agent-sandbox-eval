@@ -1,0 +1,22 @@
+schema_version: 1
+id: sort-list-001
+benchmark: terminal
+title: Sort a list of names
+instruction: Sort names.txt alphabetically and write the result to sorted.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell]
+success:
+  type: command
+  command: cmp -s sorted.txt expected.txt
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [shell, files]
+solution:
+  commands:
+    - sort names.txt > sorted.txt
+

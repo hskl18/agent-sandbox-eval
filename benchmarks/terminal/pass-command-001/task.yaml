@@ -1,0 +1,26 @@
+schema_version: 1
+id: pass-command-001
+benchmark: terminal
+title: Create a readiness marker
+instruction: Create answer.txt containing the word ready.
+workspace: workspace
+setup: []
+allowed_tools:
+  - shell
+success:
+  type: command
+  command: test -f answer.txt && grep -q ready answer.txt
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  cpus: 1
+  network: false
+tags:
+  - shell
+  - files
+solution:
+  commands:
+    - printf 'ready\n' > answer.txt
+

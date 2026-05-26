@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: python -m pytest -q
+
+      - name: Run type checks
+        run: python -m mypy agent_sandbox_eval
+
+      - name: Validate bundled tasks
+        run: ase validate-tasks --benchmark all
+
+      - name: Run Docker benchmark smoke test
+        run: |
+          ase run --agent react --provider local-solution --benchmark all --out runs/ci-react-all.jsonl
+          ase report runs/ci-react-all.jsonl --out reports/ci-react-all.md

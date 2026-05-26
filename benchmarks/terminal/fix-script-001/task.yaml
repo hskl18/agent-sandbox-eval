@@ -1,0 +1,22 @@
+schema_version: 1
+id: fix-script-001
+benchmark: terminal
+title: Fix a failing shell script
+instruction: Fix run.sh so running sh run.sh prints ready.
+workspace: workspace
+setup: []
+allowed_tools: [shell]
+success:
+  type: command
+  command: sh run.sh | grep -q '^ready$'
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [shell, debugging]
+solution:
+  commands:
+    - sed -i 's/not-ready/ready/' run.sh
+

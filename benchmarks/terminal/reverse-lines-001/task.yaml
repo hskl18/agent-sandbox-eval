@@ -1,0 +1,21 @@
+schema_version: 1
+id: reverse-lines-001
+benchmark: terminal
+title: Reverse file lines
+instruction: Reverse the lines in input.txt and write them to reversed.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: "cmp -s reversed.txt expected.txt"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [files, python]
+solution:
+  commands:
+    - python -c "lines=[line for line in open('input.txt').read().splitlines() if line]; print('\\n'.join(reversed(lines)))" > reversed.txt

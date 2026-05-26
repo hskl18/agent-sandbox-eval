@@ -1,0 +1,7 @@
+INFO boot
+ERROR timeout
+WARN retry
+ERROR failed request
+INFO recovered
+ERROR checksum
+

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-sandbox-eval"
+version = "0.1.0"
+description = "Local-first evaluation harness for tool-using agents in Docker sandboxes."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+  {name = "Agent Sandbox Eval Contributors"}
+]
+dependencies = [
+  "PyYAML>=6.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.14",
+  "pytest>=8.0"
+]
+
+[project.scripts]
+ase = "agent_sandbox_eval.cli:main"
+
+[project.entry-points."agent_sandbox_eval.agents"]
+
+[project.entry-points."agent_sandbox_eval.providers"]
+
+[project.entry-points."agent_sandbox_eval.tools"]
+
+[project.entry-points."agent_sandbox_eval.task_packs"]
+
+[tool.setuptools.packages.find]
+include = ["agent_sandbox_eval*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["yaml"]
+ignore_missing_imports = true

@@ -1,0 +1,22 @@
+schema_version: 1
+id: fix-cli-args-001
+benchmark: swe_lite
+title: Fix CLI argument handling
+instruction: Fix cli.py so python cli.py Alice prints Hello, Alice.
+workspace: workspace
+setup: []
+allowed_tools: [shell, file_read, file_write]
+success:
+  type: command
+  command: python cli.py Alice | grep -q '^Hello, Alice$'
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 45
+  max_tool_calls: 10
+  memory_mb: 256
+  network: false
+tags: [python, cli, bugfix]
+solution:
+  commands:
+    - sed -i 's/name = "world"/name = sys.argv[1] if len(sys.argv) > 1 else "world"/' cli.py
+

@@ -1,0 +1,21 @@
+schema_version: 1
+id: word-count-001
+benchmark: terminal
+title: Count words in a text file
+instruction: Count the words in essay.txt and write words=10 to count.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: "grep -q '^words=10$' count.txt"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [text, metrics]
+solution:
+  commands:
+    - python -c "print('words=' + str(len(open('essay.txt').read().split())))" > count.txt

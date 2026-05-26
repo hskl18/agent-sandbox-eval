@@ -1,0 +1,22 @@
+schema_version: 1
+id: json-summary-001
+benchmark: terminal
+title: Summarize JSON records
+instruction: Count active users in users.json and write active=2 to summary.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: grep -q '^active=2$' summary.txt
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [json, python]
+solution:
+  commands:
+    - python -c "import json; users=json.load(open('users.json')); print('active=' + str(sum(1 for u in users if u['active'])))" > summary.txt
+

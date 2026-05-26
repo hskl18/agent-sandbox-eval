@@ -1,0 +1,21 @@
+schema_version: 1
+id: normalize-json-001
+benchmark: terminal
+title: Normalize JSON formatting
+instruction: Normalize raw.json with sorted keys and two-space indentation into normalized.json.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: "python -c \"import json; assert open('normalized.json').read() == open('expected.json').read() and json.load(open('normalized.json')) == {'a': 1, 'items': [2, 1], 'z': 3}\""
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [json, python]
+solution:
+  commands:
+    - python -m json.tool --sort-keys --indent 2 raw.json > normalized.json

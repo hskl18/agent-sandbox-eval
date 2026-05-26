@@ -1,0 +1,22 @@
+schema_version: 1
+id: transform-csv-001
+benchmark: terminal
+title: Transform a CSV file
+instruction: Read sales.csv and write total.txt containing total=42.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: grep -q '^total=42$' total.txt
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [csv, python]
+solution:
+  commands:
+    - python -c "import csv; print('total=' + str(sum(int(r['amount']) for r in csv.DictReader(open('sales.csv')))))" > total.txt
+

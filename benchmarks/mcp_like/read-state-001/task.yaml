@@ -1,0 +1,26 @@
+schema_version: 1
+id: read-state-001
+benchmark: mcp_like
+title: Mark a reviewed state record
+instruction: The state record belongs to ops. Use the state tool to mark reviewed as true.
+workspace: workspace
+setup: []
+allowed_tools: [mcp_state]
+success:
+  type: command
+  command: python -c "import json; data=json.load(open('state.json')); assert data['owner'] == 'ops' and data['reviewed'] is True"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [mcp, state]
+solution:
+  tool_calls:
+    - tool: mcp_state
+      input:
+        action: set
+        key: reviewed
+        value: true
+

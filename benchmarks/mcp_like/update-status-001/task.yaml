@@ -1,0 +1,26 @@
+schema_version: 1
+id: update-status-001
+benchmark: mcp_like
+title: Update state through MCP-like tool
+instruction: Use the state tool to set status to done.
+workspace: workspace
+setup: []
+allowed_tools: [mcp_state]
+success:
+  type: command
+  command: python -c "import json; assert json.load(open('state.json'))['status'] == 'done'"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [mcp, state]
+solution:
+  tool_calls:
+    - tool: mcp_state
+      input:
+        action: set
+        key: status
+        value: done
+

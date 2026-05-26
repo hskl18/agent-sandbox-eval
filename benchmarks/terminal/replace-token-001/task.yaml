@@ -1,0 +1,21 @@
+schema_version: 1
+id: replace-token-001
+benchmark: terminal
+title: Replace a template token
+instruction: Replace __NAME__ in template.txt with Agent Sandbox Eval and write output.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell]
+success:
+  type: command
+  command: "grep -q '^Project: Agent Sandbox Eval$' output.txt"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [shell, templates]
+solution:
+  commands:
+    - sed 's/__NAME__/Agent Sandbox Eval/' template.txt > output.txt

@@ -1,0 +1,32 @@
+schema_version: 1
+id: fix-dedupe-001
+benchmark: swe_lite
+title: Preserve order while deduplicating
+instruction: Fix dedupe.unique so it preserves first-seen order while removing duplicates.
+workspace: workspace
+setup: []
+allowed_tools: [shell, file_read, file_write]
+success:
+  type: command
+  command: "python -m unittest -q"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 45
+  max_tool_calls: 10
+  memory_mb: 256
+  network: false
+tags: [python, tests, bugfix]
+solution:
+  commands:
+    - |
+      cat > dedupe.py <<'PY'
+      def unique(values):
+          seen = set()
+          result = []
+          for value in values:
+              if value not in seen:
+                  seen.add(value)
+                  result.append(value)
+          return result
+      PY
+

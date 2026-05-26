@@ -1,0 +1,22 @@
+schema_version: 1
+id: fix-permissions-001
+benchmark: terminal
+title: Make a script executable
+instruction: Update permissions so ./run.sh executes and prints ok.
+workspace: workspace
+setup: []
+allowed_tools: [shell]
+success:
+  type: command
+  command: "./run.sh | grep -q '^ok$'"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [shell, permissions]
+solution:
+  commands:
+    - chmod +x run.sh
+

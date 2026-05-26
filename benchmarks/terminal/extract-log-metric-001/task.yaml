@@ -1,0 +1,22 @@
+schema_version: 1
+id: extract-log-metric-001
+benchmark: terminal
+title: Extract a metric from logs
+instruction: Count ERROR lines in app.log and write errors=3 to metrics.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: grep -q '^errors=3$' metrics.txt
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [logs, metrics]
+solution:
+  commands:
+    - python -c "print('errors=' + str(sum(1 for line in open('app.log') if 'ERROR' in line)))" > metrics.txt
+

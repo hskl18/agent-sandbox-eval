@@ -1,0 +1,26 @@
+schema_version: 1
+id: reconcile-state-001
+benchmark: mcp_like
+title: Reconcile file and tool state
+instruction: status.txt says done. Use the state tool to update file_status to done.
+workspace: workspace
+setup: []
+allowed_tools: [mcp_state, file_read]
+success:
+  type: command
+  command: python -c "import json; assert json.load(open('state.json'))['file_status'] == 'done'"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [mcp, state, files]
+solution:
+  tool_calls:
+    - tool: mcp_state
+      input:
+        action: set
+        key: file_status
+        value: done
+

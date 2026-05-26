@@ -1,0 +1,22 @@
+schema_version: 1
+id: extract-ini-001
+benchmark: terminal
+title: Extract an INI value
+instruction: Extract the port from service.ini and write port=8080 to result.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell, python]
+success:
+  type: command
+  command: "grep -q '^port=8080$' result.txt"
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [config, parsing]
+solution:
+  commands:
+    - python -c "import configparser; c=configparser.ConfigParser(); c.read('service.ini'); print('port=' + c['server']['port'])" > result.txt
+

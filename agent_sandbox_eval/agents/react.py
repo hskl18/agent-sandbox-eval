@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+from agent_sandbox_eval.agents.base import AgentContext, AgentResult
+from agent_sandbox_eval.model_providers.base import ModelProvider, StepContext
+from agent_sandbox_eval.model_providers.local_solution import LocalSolutionProvider
+
+
+class ReActAgent:
+    name = "react"
+
+    def __init__(self, provider: ModelProvider | None = None) -> None:
+        self.provider = provider or LocalSolutionProvider()
+
+    def run(self, context: AgentContext) -> AgentResult:
+        context.recorder.record(
+            "agent_message",
+            context.task.id,
+            agent=self.name,
+            message=f"provider={self.provider.name}; starting ReAct loop",
+        )
+        tool_calls = 0
+        observations: list[dict] = []
+        for step_index in range(context.task.limits.max_tool_calls + 1):
+            action = self.provider.next_action(
+                context.task,
+                StepContext(step_index=step_index, observations=observations),
+            )
+            if action.kind == "final":
+                context.recorder.record("agent_message", context.task.id, agent=self.name, message=action.message)
+                return AgentResult(final_answer=action.message)
+            if action.kind != "tool" or not action.tool:
+                raise ValueError(f"unsupported action: {action}")
+            if action.tool not in context.tools:
+                raise ValueError(f"provider requested unavailable tool: {action.tool}")
+            if tool_calls >= context.task.limits.max_tool_calls:
+                return AgentResult(final_answer="Stopped after reaching max tool-call budget.")
+            context.recorder.record(
+                "agent_message",
+                context.task.id,
+                agent=self.name,
+                message=f"Thought: use {action.tool}",
+            )
+            result = context.tools[action.tool].run(action.input, context)
+            observations.append(
+                {
+                    "tool": action.tool,
+                    "input": action.input,
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "exit_code": result.exit_code,
+                    "duration_ms": result.duration_ms,
+                }
+            )
+            tool_calls += 1
+        return AgentResult(final_answer="Provider returned no final action.")

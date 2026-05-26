@@ -1,0 +1,22 @@
+schema_version: 1
+id: fix-parser-001
+benchmark: swe_lite
+title: Fix key-value parser
+instruction: Fix parser.parse_line so the unittest suite passes.
+workspace: workspace
+setup: []
+allowed_tools: [shell, file_read, file_write]
+success:
+  type: command
+  command: python -m unittest -q
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 45
+  max_tool_calls: 10
+  memory_mb: 256
+  network: false
+tags: [python, parsing, tests]
+solution:
+  commands:
+    - sed -i 's/line.split(":")/line.split("=", 1)/' parser.py
+

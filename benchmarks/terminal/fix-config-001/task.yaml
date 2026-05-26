@@ -1,0 +1,26 @@
+schema_version: 1
+id: fix-config-001
+benchmark: terminal
+title: Fix a configuration value
+instruction: Change app.conf so mode is set to prod.
+workspace: workspace
+setup: []
+allowed_tools:
+  - shell
+success:
+  type: command
+  command: grep -q '^mode=prod$' app.conf
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  cpus: 1
+  network: false
+tags:
+  - shell
+  - config
+solution:
+  commands:
+    - sed -i 's/^mode=.*/mode=prod/' app.conf
+

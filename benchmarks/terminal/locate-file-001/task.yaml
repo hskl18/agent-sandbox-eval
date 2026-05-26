@@ -1,0 +1,22 @@
+schema_version: 1
+id: locate-file-001
+benchmark: terminal
+title: Locate a file by content
+instruction: Find the file containing launch_code=ORBIT and write its relative path to answer.txt.
+workspace: workspace
+setup: []
+allowed_tools: [shell]
+success:
+  type: command
+  command: grep -q '^./notes/alpha.txt$' answer.txt
+  expected_exit_code: 0
+limits:
+  timeout_seconds: 30
+  max_tool_calls: 5
+  memory_mb: 256
+  network: false
+tags: [shell, search]
+solution:
+  commands:
+    - grep -R "launch_code=ORBIT" -l . > answer.txt
+
