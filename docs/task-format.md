@@ -34,10 +34,21 @@ success:
   contains: ready
 ```
 
+```yaml
+success:
+  type: json_fields
+  path: state.json
+  fields:
+    status: done
+    items.0.name: alpha
+```
+
+`json_fields` compares exact JSON values at dot-separated selectors. List indexes are written as numeric path segments.
+
 Optional fields:
 
 - `setup`: commands run before the agent starts.
-- `allowed_tools`: tool names expected for the task.
+- `allowed_tools`: tool names exposed to the agent for the task. Setup and grading still run through the sandbox outside the agent tool surface.
 - `limits`: timeout, memory, CPU, network, and max tool-call settings.
 - `tags`: search and reporting tags.
 - `solution.commands`: commands used by the `scripted` validation agent.

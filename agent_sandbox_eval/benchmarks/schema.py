@@ -43,6 +43,7 @@ class SuccessCriteria:
     expected_exit_code: int = 0
     path: str | None = None
     contains: str | None = None
+    json_fields: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SuccessCriteria":
@@ -55,7 +56,13 @@ class SuccessCriteria:
             raise ValueError("success.path is required for file_exists checks")
         if success_type == "file_contains" and (not data.get("path") or data.get("contains") is None):
             raise ValueError("success.path and success.contains are required for file_contains checks")
-        if success_type not in {"command", "file_exists", "file_contains"}:
+        if success_type == "json_fields":
+            if not data.get("path"):
+                raise ValueError("success.path is required for json_fields checks")
+            fields = data.get("fields")
+            if not isinstance(fields, dict) or not fields:
+                raise ValueError("success.fields must be a non-empty mapping for json_fields checks")
+        if success_type not in {"command", "file_exists", "file_contains", "json_fields"}:
             raise ValueError(f"unsupported success.type: {success_type}")
         return cls(
             type=success_type,
@@ -63,6 +70,7 @@ class SuccessCriteria:
             expected_exit_code=int(data.get("expected_exit_code", 0)),
             path=data.get("path"),
             contains=data.get("contains"),
+            json_fields=dict(data.get("fields") or {}),
         )
 
 
@@ -110,6 +118,23 @@ class Task:
                 raise ValueError("each solution.tool_calls entry must contain tool and input")
             if not isinstance(call["input"], dict):
                 raise ValueError("solution.tool_calls input must be a mapping")
+        allowed_tools = [str(tool) for tool in data.get("allowed_tools", [])]
+        solution_commands = [str(command) for command in solution.get("commands", [])]
+        if allowed_tools:
+            if solution_commands and "shell" not in allowed_tools:
+                raise ValueError("solution.commands require shell to be listed in allowed_tools")
+            disallowed_solution_tools = sorted(
+                {
+                    str(call["tool"])
+                    for call in solution_tool_calls
+                    if str(call["tool"]) not in allowed_tools
+                }
+            )
+            if disallowed_solution_tools:
+                raise ValueError(
+                    "solution.tool_calls reference tools outside allowed_tools: "
+                    + ", ".join(disallowed_solution_tools)
+                )
         return cls(
             schema_version=schema_version,
             id=str(data["id"]),
@@ -119,10 +144,10 @@ class Task:
             workspace=workspace,
             manifest_path=manifest_path,
             setup=[str(command) for command in data.get("setup", [])],
-            allowed_tools=[str(tool) for tool in data.get("allowed_tools", [])],
+            allowed_tools=allowed_tools,
             success=SuccessCriteria.from_dict(data["success"]),
             limits=Limits.from_dict(data.get("limits")),
             tags=[str(tag) for tag in data.get("tags", [])],
-            solution_commands=[str(command) for command in solution.get("commands", [])],
+            solution_commands=solution_commands,
             solution_tool_calls=list(solution_tool_calls),
         )

@@ -55,9 +55,36 @@ class Runner:
             with DockerSandbox(task, image=self.docker_image, keep_workspace=self.keep_workspaces) as sandbox:
                 setup_context = _ToolAgentContext(task, {}, recorder, "setup")
                 shell = ShellTool(sandbox)
+                setup_failed = False
                 for command in task.setup:
                     setup_result = shell.run({"cmd": command}, setup_context)
                     agent_tool_results.append(setup_result)
+                    if setup_result.exit_code != 0:
+                        recorder.record(
+                            "grader_result",
+                            task.id,
+                            agent=self.agent.name,
+                            passed=False,
+                            score=0.0,
+                            failure_mode="environment_setup_failure",
+                            evidence=[
+                                f"Setup command failed: {command}",
+                                f"Exit code: {setup_result.exit_code}",
+                                *([f"stderr: {setup_result.stderr.strip()[:500]}"] if setup_result.stderr.strip() else []),
+                                *([f"stdout: {setup_result.stdout.strip()[:500]}"] if setup_result.stdout.strip() else []),
+                            ],
+                            raw_result=setup_result.to_dict(),
+                        )
+                        recorder.record(
+                            "task_end",
+                            task.id,
+                            agent=self.agent.name,
+                            final_answer="Task stopped because setup failed.",
+                        )
+                        setup_failed = True
+                        break
+                if setup_failed:
+                    continue
 
                 if sandbox.workspace is None:
                     raise RuntimeError("sandbox workspace was not initialized")
@@ -70,6 +97,7 @@ class Runner:
                 }
                 for name, factory in self.extra_tool_factories.items():
                     tools[name] = factory(sandbox)
+                tools = _filter_allowed_tools(task, tools)
                 context = _ToolAgentContext(task, tools, recorder, self.agent.name)
                 agent_result = self.agent.run(context)
 
@@ -92,6 +120,15 @@ class Runner:
 
         recorder.record("run_end", agent=self.agent.name, passed_tasks=passed, total_tasks=len(tasks))
         return RunSummary(total_tasks=len(tasks), passed_tasks=passed)
+
+
+def _filter_allowed_tools(task: Task, tools: dict[str, object]) -> dict[str, object]:
+    if not task.allowed_tools:
+        return tools
+    missing = sorted(set(task.allowed_tools) - set(tools))
+    if missing:
+        raise ValueError(f"task {task.id} allows unavailable tools: {', '.join(missing)}")
+    return {name: tool for name, tool in tools.items() if name in set(task.allowed_tools)}
 
 
 class _ToolAgentContext(AgentContext):

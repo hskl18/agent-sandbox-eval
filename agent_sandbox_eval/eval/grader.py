@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from agent_sandbox_eval.benchmarks.schema import Task
@@ -48,6 +49,15 @@ class Grader:
                 f"Actual exit code: {raw.exit_code}",
             ]
             passed = raw.exit_code == 0
+        elif task.success.type == "json_fields" and task.success.path and task.success.json_fields:
+            command = _json_fields_command(task.success.path, task.success.json_fields)
+            raw = sandbox.run(command, timeout_seconds=task.limits.timeout_seconds)
+            evidence = [
+                f"Required JSON file: {task.success.path}",
+                f"Required JSON fields: {', '.join(sorted(task.success.json_fields))}",
+                f"Actual exit code: {raw.exit_code}",
+            ]
+            passed = raw.exit_code == 0
         else:
             raise ValueError(f"unsupported success criteria for task {task.id}: {task.success.type}")
         if raw.stdout.strip():
@@ -67,3 +77,39 @@ class Grader:
             evidence=evidence,
             raw_result=raw,
         )
+
+
+def _json_fields_command(path: str, fields: dict[str, object]) -> str:
+    path_json = json.dumps(path)
+    fields_json = json.dumps(fields, sort_keys=True)
+    return (
+        "python - <<'PY'\n"
+        "import json\n"
+        "from pathlib import Path\n"
+        f"path = {path_json}\n"
+        f"expected = {fields_json}\n"
+        "data = json.loads(Path(path).read_text(encoding='utf-8'))\n"
+        "\n"
+        "def resolve(value, selector):\n"
+        "    current = value\n"
+        "    for part in selector.split('.'):\n"
+        "        if isinstance(current, list):\n"
+        "            current = current[int(part)]\n"
+        "        else:\n"
+        "            current = current[part]\n"
+        "    return current\n"
+        "\n"
+        "mismatches = []\n"
+        "for selector, expected_value in expected.items():\n"
+        "    try:\n"
+        "        actual_value = resolve(data, selector)\n"
+        "    except (KeyError, IndexError, TypeError, ValueError) as exc:\n"
+        "        mismatches.append({'field': selector, 'error': str(exc)})\n"
+        "        continue\n"
+        "    if actual_value != expected_value:\n"
+        "        mismatches.append({'field': selector, 'expected': expected_value, 'actual': actual_value})\n"
+        "if mismatches:\n"
+        "    print(json.dumps(mismatches, sort_keys=True))\n"
+        "    raise SystemExit(1)\n"
+        "PY"
+    )

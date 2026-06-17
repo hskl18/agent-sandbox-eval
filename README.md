@@ -44,6 +44,8 @@ Failure reports include deterministic failure modes and evidence. See [docs/fail
 
 Agents, model providers, tools, and benchmark task packs can be extended through Python entry points. See [docs/extensions.md](docs/extensions.md).
 
+Research-backed optimization notes and the next reliability work are tracked in [docs/research-and-optimization.md](docs/research-and-optimization.md).
+
 Reproducible example commands are listed in [examples/README.md](examples/README.md).
 
 ## Current Agent Status

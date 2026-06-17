@@ -1,4 +1,7 @@
 from pathlib import Path
+import subprocess
+
+import pytest
 
 from agent_sandbox_eval.benchmarks.schema import SuccessCriteria
 from agent_sandbox_eval.benchmarks.loader import load_task
@@ -6,6 +9,12 @@ from agent_sandbox_eval.eval.grader import Grader
 from agent_sandbox_eval.sandbox.docker import DockerSandbox
 from agent_sandbox_eval.eval.failure_analysis import analyze_failure, classify_failure
 from agent_sandbox_eval.tools.base import ToolResult
+
+
+def _skip_without_docker() -> None:
+    docker = subprocess.run(["docker", "info"], capture_output=True, text=True, check=False)
+    if docker.returncode != 0:
+        pytest.skip("Docker daemon is not available")
 
 
 def test_failure_analysis_no_progress() -> None:
@@ -42,6 +51,7 @@ def test_task_success_criteria_loaded() -> None:
 
 
 def test_file_contains_grader_check() -> None:
+    _skip_without_docker()
     task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
     task = task.__class__(
         **{
@@ -54,3 +64,41 @@ def test_file_contains_grader_check() -> None:
         result = Grader().grade(task, sandbox, [])
 
     assert result.passed
+
+
+def test_json_fields_grader_check() -> None:
+    _skip_without_docker()
+    task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
+    task = task.__class__(
+        **{
+            **task.__dict__,
+            "success": SuccessCriteria(
+                type="json_fields",
+                path="result.json",
+                json_fields={"status": "done", "items.0.name": "alpha"},
+            ),
+        }
+    )
+    with DockerSandbox(task) as sandbox:
+        sandbox.run("printf '%s\n' '{\"status\":\"done\",\"items\":[{\"name\":\"alpha\"}]}' > result.json")
+        result = Grader().grade(task, sandbox, [])
+
+    assert result.passed
+
+
+def test_json_fields_grader_reports_mismatch() -> None:
+    _skip_without_docker()
+    task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
+    task = task.__class__(
+        **{
+            **task.__dict__,
+            "success": SuccessCriteria(type="json_fields", path="result.json", json_fields={"status": "done"}),
+        }
+    )
+    with DockerSandbox(task) as sandbox:
+        sandbox.run("printf '%s\n' '{\"status\":\"pending\"}' > result.json")
+        result = Grader().grade(task, sandbox, [])
+
+    assert not result.passed
+    assert result.failure_mode
+    assert any("status" in item for item in result.evidence)

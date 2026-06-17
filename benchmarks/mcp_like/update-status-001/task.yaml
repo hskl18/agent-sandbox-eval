@@ -7,9 +7,10 @@ workspace: workspace
 setup: []
 allowed_tools: [mcp_state]
 success:
-  type: command
-  command: python -c "import json; assert json.load(open('state.json'))['status'] == 'done'"
-  expected_exit_code: 0
+  type: json_fields
+  path: state.json
+  fields:
+    status: done
 limits:
   timeout_seconds: 30
   max_tool_calls: 5
@@ -23,4 +24,3 @@ solution:
         action: set
         key: status
         value: done
-
