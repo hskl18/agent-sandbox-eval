@@ -49,7 +49,7 @@ Optional fields:
 
 - `setup`: commands run before the agent starts.
 - `allowed_tools`: tool names exposed to the agent for the task. Setup and grading still run through the sandbox outside the agent tool surface.
-- `limits`: timeout, memory, CPU, network, and max tool-call settings.
+- `limits`: timeout, memory, CPU, PID, network, and max tool-call settings.
 - `tags`: search and reporting tags.
 - `solution.commands`: commands used by the `scripted` validation agent.
 - `solution.tool_calls`: tool calls used by the `scripted` validation agent.
@@ -71,3 +71,6 @@ Validate all bundled tasks with:
 ```bash
 ase validate-tasks --benchmark all
 ```
+
+The optional `limits.pids_limit` value defaults to 256 and must be between 1 and 256.
+It bounds the number of processes available to a task container.

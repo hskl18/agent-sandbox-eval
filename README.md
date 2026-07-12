@@ -29,6 +29,9 @@ ase validate-tasks --benchmark all
 ```
 
 Docker is required for `ase run`.
+Sandbox commands run with a read-only container root, dropped Linux capabilities, `no-new-privileges`, Docker's built-in seccomp profile, a PID limit, and explicit writable workspace and temporary mounts.
+These controls are defense in depth, not a guarantee that Docker safely contains every hostile workload.
+See [docs/sandbox-model.md](docs/sandbox-model.md) and [SECURITY.md](SECURITY.md) for the exact boundary and limitations.
 
 ## Bundled Benchmarks
 

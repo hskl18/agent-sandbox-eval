@@ -156,7 +156,7 @@ def build_comparison_report(trajectory_paths: list[Path]) -> str:
         "| --- | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for summary in summaries:
-        typed_summary = summary  # type: dict[str, Any]
+        typed_summary: dict[str, Any] = summary
         total = int(typed_summary["total"])
         pass_rate = float(typed_summary["pass_rate"])
         avg_tool_calls = float(typed_summary["avg_tool_calls"])
