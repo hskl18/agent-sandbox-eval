@@ -35,6 +35,37 @@ def test_failure_analysis_command_hallucination() -> None:
     assert any("missing command" in item for item in analysis.evidence)
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("planning error: skipped the required dependency", "planning_error"),
+        ("wrong tool selected for this state update", "tool_selection_error"),
+        ("unrecognized arguments: --destnation", "argument_error"),
+        ("environment assumption: expected jq to exist", "environment_assumption"),
+        ("state corruption: invalid JSON after write", "state_corruption"),
+        ("grader mismatch: expected file differs from task", "grader_or_task_bug"),
+        ("unsafe action blocked by sandbox policy", "unsafe_action"),
+    ],
+)
+def test_failure_analysis_expanded_taxonomy(message: str, expected: str) -> None:
+    raw = ToolResult(stderr="grader failed", exit_code=1)
+    tool_results = [ToolResult(stderr=message, exit_code=1)]
+    analysis = analyze_failure(tool_results, raw)
+    assert analysis.failure_mode == expected
+
+
+def test_failure_analysis_distinguishes_timeout_from_step_budget() -> None:
+    timeout = analyze_failure([ToolResult(exit_code=124)], ToolResult(exit_code=1))
+    budget = analyze_failure(
+        [ToolResult(exit_code=0), ToolResult(exit_code=0)],
+        ToolResult(exit_code=1),
+        max_tool_calls=2,
+    )
+
+    assert timeout.failure_mode == "timeout"
+    assert budget.failure_mode == "exceeded_budget"
+
+
 def test_failure_analysis_regression_after_verification() -> None:
     raw = ToolResult(exit_code=1)
     tool_results = [ToolResult(stdout="1 passed", exit_code=0)]

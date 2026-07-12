@@ -35,7 +35,25 @@ jobs:
       - name: Validate bundled tasks
         run: ase validate-tasks --benchmark all
 
-      - name: Run Docker benchmark smoke test
+      - name: Run Docker harness baselines
         run: |
-          ase run --agent react --provider local-solution --benchmark all --out runs/ci-react-all.jsonl
-          ase report runs/ci-react-all.jsonl --out reports/ci-react-all.md
+          mkdir -p artifacts/v1
+          ase run --agent scripted --benchmark all --out artifacts/v1/scripted-oracle.jsonl
+          ase run --agent react --provider local-solution --benchmark all --out artifacts/v1/react-local-solution.jsonl
+          ase run --agent noop --benchmark all --out artifacts/v1/noop-negative-control.jsonl
+          ase report artifacts/v1/scripted-oracle.jsonl --out artifacts/v1/scripted-oracle.md
+          ase report artifacts/v1/react-local-solution.jsonl --out artifacts/v1/react-local-solution.md
+          ase report artifacts/v1/noop-negative-control.jsonl --out artifacts/v1/noop-negative-control.md
+          ase compare artifacts/v1/scripted-oracle.jsonl artifacts/v1/react-local-solution.jsonl artifacts/v1/noop-negative-control.jsonl --out artifacts/v1/comparison.md
+          python tools/build_harness_manifest.py \
+            --scripted artifacts/v1/scripted-oracle.jsonl \
+            --react-local-solution artifacts/v1/react-local-solution.jsonl \
+            --noop artifacts/v1/noop-negative-control.jsonl \
+            --out artifacts/v1/manifest.json
+
+      - name: Upload harness baseline artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: harness-baseline-v1
+          path: artifacts/v1
+          if-no-files-found: error

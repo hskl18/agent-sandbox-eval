@@ -3,6 +3,7 @@ from __future__ import annotations
 from agent_sandbox_eval.agents.base import AgentContext, AgentResult
 from agent_sandbox_eval.model_providers.base import ModelProvider, StepContext
 from agent_sandbox_eval.model_providers.local_solution import LocalSolutionProvider
+from agent_sandbox_eval.model_providers.telemetry import record_provider_calls
 
 
 class ReActAgent:
@@ -25,6 +26,7 @@ class ReActAgent:
                 context.task,
                 StepContext(step_index=step_index, observations=observations),
             )
+            record_provider_calls(context, self.provider, self.name)
             if action.kind == "final":
                 context.recorder.record("agent_message", context.task.id, agent=self.name, message=action.message)
                 return AgentResult(final_answer=action.message)

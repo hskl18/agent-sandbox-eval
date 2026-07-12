@@ -13,6 +13,7 @@ def summarize_trajectory(trajectory_path: Path) -> dict[str, object]:
     grader_events = [event for event in events if event.get("event_type") == "grader_result"]
     tool_calls = [event for event in events if event.get("event_type") == "tool_call"]
     tool_results = [event for event in events if event.get("event_type") == "tool_result"]
+    model_calls = [event for event in events if event.get("event_type") == "model_call"]
     run_end = next((event for event in reversed(events) if event.get("event_type") == "run_end"), {})
     total = len(grader_events)
     passed = sum(1 for event in grader_events if event.get("passed"))
@@ -26,7 +27,7 @@ def summarize_trajectory(trajectory_path: Path) -> dict[str, object]:
     timeout_count = sum(
         1
         for event in grader_events
-        if event.get("failure_mode") == "exceeded_budget"
+        if event.get("failure_mode") in {"timeout", "exceeded_budget"}
         or (
             isinstance(event.get("raw_result"), dict)
             and (event.get("raw_result") or {}).get("exit_code") == 124
@@ -68,6 +69,10 @@ def summarize_trajectory(trajectory_path: Path) -> dict[str, object]:
         if failure != "passed":
             top_failure = str(failure)
             break
+    input_tokens = sum(int(event.get("input_tokens") or 0) for event in model_calls)
+    output_tokens = sum(int(event.get("output_tokens") or 0) for event in model_calls)
+    priced_model_calls = [event for event in model_calls if event.get("estimated_cost_usd") is not None]
+    estimated_cost_usd = sum(float(event.get("estimated_cost_usd") or 0.0) for event in priced_model_calls)
     return {
         "path": str(trajectory_path),
         "agent": str(run_end.get("agent") or "unknown"),
@@ -83,6 +88,11 @@ def summarize_trajectory(trajectory_path: Path) -> dict[str, object]:
         "timeout_rate": timeout_count / total if total else 0.0,
         "verification_rate": verified_tasks / total if total else 0.0,
         "task_or_grader_bug_count": task_or_grader_bug_count,
+        "model_calls": len(model_calls),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_cost_usd": estimated_cost_usd,
+        "cost_coverage": len(priced_model_calls) / len(model_calls) if model_calls else 0.0,
         "failures": failures,
         "top_failure": top_failure,
         "grader_events": grader_events,
@@ -113,6 +123,11 @@ def build_markdown_report(trajectory_path: Path) -> str:
         f"- Timeout rate: {summary['timeout_rate']:.1%}",
         f"- Verification rate: {summary['verification_rate']:.1%}",
         f"- Task/grader bug count: {summary['task_or_grader_bug_count']}",
+        f"- Model calls: {summary['model_calls']}",
+        f"- Input tokens: {summary['input_tokens']}",
+        f"- Output tokens: {summary['output_tokens']}",
+        f"- Estimated model cost: ${summary['estimated_cost_usd']:.6f}",
+        f"- Model cost coverage: {summary['cost_coverage']:.1%}",
         f"- Top failure: `{summary['top_failure'] or 'none'}`",
         "",
         "## Failure Modes",
@@ -135,10 +150,10 @@ def build_markdown_report(trajectory_path: Path) -> str:
         for event in failed_events:
             lines.append(f"### `{event.get('task_id')}`")
             for item in event.get("evidence", [])[:8]:
-                lines.append(f"- {item}")
+                cleaned = "\n".join(line.rstrip() for line in str(item).splitlines()).rstrip()
+                lines.append(f"- {cleaned}")
             lines.append("")
-    lines.append("")
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def write_markdown_report(trajectory_path: Path, output_path: Path) -> Path:
@@ -152,8 +167,8 @@ def build_comparison_report(trajectory_paths: list[Path]) -> str:
     lines = [
         "# Agent Sandbox Eval Comparison",
         "",
-        "| Agent | Tasks | Pass Rate | Avg Tool Calls | Avg Runtime | Top Failure | Trajectory |",
-        "| --- | ---: | ---: | ---: | ---: | --- | --- |",
+        "| Agent | Tasks | Pass Rate | Avg Tool Calls | Model Calls | Tokens | Est. Cost | Avg Runtime | Top Failure | Trajectory |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for summary in summaries:
         typed_summary: dict[str, Any] = summary
@@ -161,19 +176,24 @@ def build_comparison_report(trajectory_paths: list[Path]) -> str:
         pass_rate = float(typed_summary["pass_rate"])
         avg_tool_calls = float(typed_summary["avg_tool_calls"])
         avg_runtime_ms = float(typed_summary["avg_runtime_ms"])
+        model_calls = int(typed_summary["model_calls"])
+        total_tokens = int(typed_summary["input_tokens"]) + int(typed_summary["output_tokens"])
+        estimated_cost_usd = float(typed_summary["estimated_cost_usd"])
         lines.append(
-            "| {agent} | {total} | {pass_rate:.1%} | {avg_tool_calls:.1f} | {avg_runtime_ms:.0f}ms | {top_failure} | `{path}` |".format(
+            "| {agent} | {total} | {pass_rate:.1%} | {avg_tool_calls:.1f} | {model_calls} | {total_tokens} | ${estimated_cost_usd:.6f} | {avg_runtime_ms:.0f}ms | {top_failure} | `{path}` |".format(
                 agent=summary["agent"],
                 total=total,
                 pass_rate=pass_rate,
                 avg_tool_calls=avg_tool_calls,
+                model_calls=model_calls,
+                total_tokens=total_tokens,
+                estimated_cost_usd=estimated_cost_usd,
                 avg_runtime_ms=avg_runtime_ms,
                 top_failure=summary["top_failure"] or "none",
                 path=summary["path"],
             )
         )
-    lines.append("")
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def write_comparison_report(trajectory_paths: list[Path], output_path: Path) -> Path:

@@ -27,6 +27,15 @@ def test_replay_and_report(tmp_path: Path) -> None:
         tool="shell",
         output={"exit_code": 0, "stdout": "", "stderr": "", "duration_ms": 5},
     )
+    recorder.record(
+        "model_call",
+        "task-1",
+        provider="test-provider",
+        model="test-model",
+        input_tokens=120,
+        output_tokens=30,
+        estimated_cost_usd=0.00048,
+    )
     recorder.record("grader_result", "task-1", passed=True, score=1.0, raw_result={"duration_ms": 1})
     recorder.record("run_end", agent="test-agent", passed_tasks=1, total_tasks=1)
 
@@ -40,11 +49,19 @@ def test_replay_and_report(tmp_path: Path) -> None:
     assert "Average score: 1.00" in report
     assert "Average tool calls per task: 1.0" in report
     assert "Verification rate: 100.0%" in report
+    assert "Model calls: 1" in report
+    assert "Input tokens: 120" in report
+    assert "Estimated model cost: $0.000480" in report
     assert "## Tool Use" in report
     assert "`shell`: 1" in report
     assert summary["agent"] == "test-agent"
     assert summary["average_score"] == 1.0
+    assert summary["model_calls"] == 1
+    assert summary["input_tokens"] == 120
+    assert summary["estimated_cost_usd"] == 0.00048
     assert "| test-agent | 1 | 100.0%" in comparison
+    assert report.endswith("\n") and not report.endswith("\n\n")
+    assert comparison.endswith("\n") and not comparison.endswith("\n\n")
 
 
 def test_report_includes_failure_evidence(tmp_path: Path) -> None:

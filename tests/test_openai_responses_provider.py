@@ -51,9 +51,17 @@ def test_openai_provider_parses_structured_output(monkeypatch: pytest.MonkeyPatc
         captured["url"] = request.full_url
         captured["timeout"] = timeout
         captured["payload"] = json.loads(request.data.decode("utf-8"))
-        return _FakeResponse({"output_text": json.dumps(model_output)})
+        return _FakeResponse(
+            {
+                "id": "resp_test",
+                "output_text": json.dumps(model_output),
+                "usage": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+            }
+        )
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("OPENAI_INPUT_COST_PER_1M", "2")
+    monkeypatch.setenv("OPENAI_OUTPUT_COST_PER_1M", "8")
     provider = OpenAIResponsesProvider(api_key="test-key", model="test-model", timeout_seconds=7)
 
     plan = provider.plan(task)
@@ -67,6 +75,19 @@ def test_openai_provider_parses_structured_output(monkeypatch: pytest.MonkeyPatc
     assert actions[0].tool == "shell"
     assert actions[0].input == {"cmd": "printf 'ready\\n' > answer.txt"}
     assert actions[-1].kind == "final"
+    call_records = provider.drain_call_records()
+    assert len(call_records) == 1
+    assert call_records[0] | {"duration_ms": 0} == {
+        "provider": "openai-responses",
+        "model": "test-model",
+        "response_id": "resp_test",
+        "duration_ms": 0,
+        "input_tokens": 120,
+        "output_tokens": 30,
+        "total_tokens": 150,
+        "estimated_cost_usd": 0.00048,
+        "cost_rates_configured": True,
+    }
 
 
 def test_openai_provider_step_prompt_includes_observations(monkeypatch: pytest.MonkeyPatch) -> None:

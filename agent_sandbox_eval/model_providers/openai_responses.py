@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -28,6 +29,12 @@ class OpenAIResponsesProvider:
         self.timeout_seconds = timeout_seconds
         self._cache: dict[str, dict[str, Any]] = {}
         self._step_cache: dict[tuple[str, int], AgentAction] = {}
+        self._call_records: list[dict[str, Any]] = []
+
+    def drain_call_records(self) -> list[dict[str, Any]]:
+        records = list(self._call_records)
+        self._call_records.clear()
+        return records
 
     def plan(self, task: Task) -> list[str]:
         decision = self._decision(task)
@@ -104,6 +111,7 @@ class OpenAIResponsesProvider:
             },
             method="POST",
         )
+        started = time.monotonic()
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 response_data = json.loads(response.read().decode("utf-8"))
@@ -113,6 +121,14 @@ class OpenAIResponsesProvider:
         except urllib.error.URLError as exc:
             raise RuntimeError(f"OpenAI Responses API request failed: {exc.reason}") from exc
 
+        self._call_records.append(
+            _call_record(
+                response_data,
+                provider=self.name,
+                model=self.model,
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
+        )
         text = _extract_response_text(response_data)
         try:
             decision = json.loads(text)
@@ -216,3 +232,45 @@ def _extract_response_text(response_data: dict[str, Any]) -> str:
     if parts:
         return "".join(parts)
     raise ValueError("OpenAI response did not contain output_text")
+
+
+def _call_record(
+    response_data: dict[str, Any],
+    provider: str,
+    model: str,
+    duration_ms: int,
+) -> dict[str, Any]:
+    usage = response_data.get("usage")
+    typed_usage = usage if isinstance(usage, dict) else {}
+    input_tokens = int(typed_usage.get("input_tokens") or 0)
+    output_tokens = int(typed_usage.get("output_tokens") or 0)
+    total_tokens = int(typed_usage.get("total_tokens") or input_tokens + output_tokens)
+    input_rate = _optional_nonnegative_float("OPENAI_INPUT_COST_PER_1M")
+    output_rate = _optional_nonnegative_float("OPENAI_OUTPUT_COST_PER_1M")
+    estimated_cost = None
+    if input_rate is not None and output_rate is not None:
+        estimated_cost = round(
+            (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000,
+            8,
+        )
+    return {
+        "provider": provider,
+        "model": model,
+        "response_id": response_data.get("id"),
+        "duration_ms": duration_ms,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "estimated_cost_usd": estimated_cost,
+        "cost_rates_configured": estimated_cost is not None,
+    }
+
+
+def _optional_nonnegative_float(name: str) -> float | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    parsed = float(value)
+    if parsed < 0:
+        raise ValueError(f"{name} must be nonnegative")
+    return parsed
