@@ -3,6 +3,7 @@ from __future__ import annotations
 from agent_sandbox_eval.agents.base import AgentContext, AgentResult
 from agent_sandbox_eval.model_providers.base import ModelProvider, StepContext
 from agent_sandbox_eval.model_providers.local_solution import LocalSolutionProvider
+from agent_sandbox_eval.model_providers.telemetry import record_provider_calls
 
 
 class PlannerExecutorAgent:
@@ -13,6 +14,7 @@ class PlannerExecutorAgent:
 
     def run(self, context: AgentContext) -> AgentResult:
         plan = self.provider.plan(context.task)
+        record_provider_calls(context, self.provider, self.name)
         context.recorder.record(
             "agent_message",
             context.task.id,
@@ -27,6 +29,7 @@ class PlannerExecutorAgent:
                 context.task,
                 StepContext(step_index=index - 1, observations=observations),
             )
+            record_provider_calls(context, self.provider, self.name)
             if action.kind == "final":
                 context.recorder.record(
                     "agent_message",

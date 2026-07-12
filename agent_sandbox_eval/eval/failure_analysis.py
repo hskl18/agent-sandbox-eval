@@ -30,7 +30,7 @@ def analyze_failure(
 
     if grader_result.exit_code == 124 or any(result.exit_code == 124 for result in agent_tool_results):
         evidence.append("A command timed out with exit code 124.")
-        return FailureAnalysis("exceeded_budget", evidence)
+        return FailureAnalysis("timeout", evidence)
 
     if max_tool_calls is not None and len(agent_tool_results) >= max_tool_calls:
         evidence.append(f"Agent reached the max tool-call budget: {max_tool_calls}.")
@@ -39,6 +39,24 @@ def analyze_failure(
     if not agent_tool_results:
         evidence.append("Agent made no tool calls before grading.")
         return FailureAnalysis("no_progress", evidence)
+
+    marker_modes = [
+        ("unsafe action blocked", "unsafe_action"),
+        ("state corruption", "state_corruption"),
+        ("invalid json", "state_corruption"),
+        ("grader mismatch", "grader_or_task_bug"),
+        ("task bug", "grader_or_task_bug"),
+        ("planning error", "planning_error"),
+        ("wrong tool", "tool_selection_error"),
+        ("tool not allowed", "tool_selection_error"),
+        ("unrecognized arguments", "argument_error"),
+        ("invalid option", "argument_error"),
+        ("environment assumption", "environment_assumption"),
+    ]
+    for marker, failure_mode in marker_modes:
+        if marker in combined_all:
+            evidence.append(f"Tool or grader output contains the marker: {marker}.")
+            return FailureAnalysis(failure_mode, evidence)
 
     if "not found" in combined_all or "no such file" in combined_all:
         evidence.append("Tool output mentions a missing command, file, flag, package, or path.")
