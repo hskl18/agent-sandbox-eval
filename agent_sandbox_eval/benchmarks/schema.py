@@ -6,6 +6,8 @@ from typing import Any
 
 from agent_sandbox_eval.version import TASK_SCHEMA_VERSION
 
+MAX_PIDS_LIMIT = 256
+
 
 @dataclass(frozen=True)
 class Limits:
@@ -13,6 +15,7 @@ class Limits:
     max_tool_calls: int = 30
     memory_mb: int = 1024
     cpus: float = 1.0
+    pids_limit: int = MAX_PIDS_LIMIT
     network: bool = False
 
     @classmethod
@@ -23,6 +26,7 @@ class Limits:
             max_tool_calls=int(data.get("max_tool_calls", 30)),
             memory_mb=int(data.get("memory_mb", 1024)),
             cpus=float(data.get("cpus", 1.0)),
+            pids_limit=int(data.get("pids_limit", MAX_PIDS_LIMIT)),
             network=bool(data.get("network", False)),
         )
         if limits.timeout_seconds <= 0:
@@ -33,6 +37,10 @@ class Limits:
             raise ValueError("limits.memory_mb must be positive")
         if limits.cpus <= 0:
             raise ValueError("limits.cpus must be positive")
+        if limits.pids_limit <= 0:
+            raise ValueError("limits.pids_limit must be positive")
+        if limits.pids_limit > MAX_PIDS_LIMIT:
+            raise ValueError(f"limits.pids_limit cannot exceed {MAX_PIDS_LIMIT}")
         return limits
 
 

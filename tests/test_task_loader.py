@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from agent_sandbox_eval.benchmarks.loader import benchmark_roots, discover_task_files, load_benchmark, load_task
+from agent_sandbox_eval.benchmarks.schema import Limits
 
 
 def test_load_task() -> None:
@@ -9,6 +12,17 @@ def test_load_task() -> None:
     assert task.id == "pass-command-001"
     assert task.success.command
     assert task.workspace.exists()
+    assert task.limits.pids_limit == 256
+
+
+def test_rejects_non_positive_pid_limit() -> None:
+    with pytest.raises(ValueError, match="limits.pids_limit must be positive"):
+        Limits.from_dict({"pids_limit": 0})
+
+
+def test_rejects_pid_limit_above_sandbox_maximum() -> None:
+    with pytest.raises(ValueError, match="limits.pids_limit cannot exceed 256"):
+        Limits.from_dict({"pids_limit": 257})
 
 
 def test_discover_benchmark_tasks() -> None:

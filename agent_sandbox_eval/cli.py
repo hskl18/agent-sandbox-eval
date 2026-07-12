@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from agent_sandbox_eval.agents.registry import get_agent
-from agent_sandbox_eval.benchmarks.loader import discover_task_files, load_benchmark, load_task
+from agent_sandbox_eval.benchmarks.loader import load_benchmark, load_task
 from agent_sandbox_eval.benchmarks.loader import benchmark_roots, discover_task_files_many
 from agent_sandbox_eval.extensions import (
     AGENT_ENTRY_POINT_GROUP,
