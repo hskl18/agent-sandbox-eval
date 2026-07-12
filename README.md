@@ -17,7 +17,20 @@ ase compare runs/react-all.jsonl runs/planner-all.jsonl runs/scripted-all.jsonl 
 ase replay runs/react-all.jsonl --task pass-command-001
 ```
 
-The default provider for `react` and `planner` is `local-solution`, a deterministic provider that converts bundled solution metadata into tool actions. It exists so agent loops can be tested before external model providers are added.
+The default provider for `react` and `planner` is `local-solution`, a deterministic provider that converts bundled solution metadata into tool actions.
+It validates the loop and harness; it does not measure agent reasoning.
+
+## Evidence Status
+
+The repository publishes three clearly separated harness baselines:
+
+- `scripted` is an oracle that executes task-provided validation solutions.
+- `react` with `local-solution` validates iterative tool dispatch using the same task-provided metadata.
+- `noop` is a negative control for grading and failure classification.
+
+None of these is a model capability result.
+No real-model leaderboard is currently published.
+See the [real-model runbook](docs/model-runbook.md) for the fixed repeated-trial protocol and the metrics that must be present before a model result can be added.
 
 ## Development
 
@@ -44,6 +57,9 @@ The current repository includes:
 The `scripted` agent is expected to pass every bundled task. This validates task manifests, sandbox execution, trajectory recording, grading, reports, and replay without depending on a model provider.
 
 Failure reports include deterministic failure modes and evidence. See [docs/failure-analysis.md](docs/failure-analysis.md).
+
+GitHub Actions runs the oracle, deterministic harness, and negative control against all 25 bundled tasks in Docker.
+It uploads the JSONL trajectories, Markdown reports, comparison, and environment manifest as the `harness-baseline-v1` workflow artifact.
 
 Agents, model providers, tools, and benchmark task packs can be extended through Python entry points. See [docs/extensions.md](docs/extensions.md).
 
