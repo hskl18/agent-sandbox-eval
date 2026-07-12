@@ -28,3 +28,7 @@ It does not guarantee that every syscall reachable through the profile is safe f
 
 The writable workspace is intentionally persistent for the lifetime of a task because agents must edit benchmark files.
 Do not place credentials, Docker sockets, host source trees, or other sensitive files in task workspaces.
+
+The `/workspace` and `/tmp` writable-path boundary assumes the configured container image does not declare additional `VOLUME` paths.
+Docker can create writable anonymous volumes for paths declared by an image even when the container root filesystem is read-only.
+This harness does not currently inspect or reject image-declared volumes, so operators must use reviewed images without unexpected volume declarations.
