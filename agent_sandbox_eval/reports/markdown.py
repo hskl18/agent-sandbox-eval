@@ -150,10 +150,10 @@ def build_markdown_report(trajectory_path: Path) -> str:
         for event in failed_events:
             lines.append(f"### `{event.get('task_id')}`")
             for item in event.get("evidence", [])[:8]:
-                lines.append(f"- {item}")
+                cleaned = "\n".join(line.rstrip() for line in str(item).splitlines()).rstrip()
+                lines.append(f"- {cleaned}")
             lines.append("")
-    lines.append("")
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def write_markdown_report(trajectory_path: Path, output_path: Path) -> Path:
@@ -193,8 +193,7 @@ def build_comparison_report(trajectory_paths: list[Path]) -> str:
                 path=summary["path"],
             )
         )
-    lines.append("")
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def write_comparison_report(trajectory_paths: list[Path], output_path: Path) -> Path:

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "1.0",
+  "generatedAt": "2026-07-12T12:32:33.593979+00:00",
+  "taskPackCommit": "cc1dba33048b27808b0611cb32c0d68231228fd6",
+  "environment": {
+    "python": "3.12.13",
+    "platform": "Linux-6.17.0-1018-azure-x86_64-with-glibc2.39",
+    "dockerServer": "28.0.4",
+    "image": "python:3.13-slim"
+  },
+  "scope": "Harness validation only. No model or agent capability result is included.",
+  "liveModelResults": null,
+  "runs": [
+    {
+      "label": "scripted",
+      "classification": "scripted_oracle",
+      "claim": "Validates task solutions, Docker execution, grading, recording, reports, and replay.",
+      "agent_capability_result": false,
+      "trajectory": "artifacts/v1/scripted-oracle.jsonl",
+      "tasks": 25,
+      "passed": 25,
+      "passRate": 1.0,
+      "averageScore": 1.0,
+      "toolCalls": 25,
+      "averageToolCalls": 1.0,
+      "averageRuntimeMs": 973.36,
+      "timeoutRate": 0.0,
+      "verificationRate": 0.0,
+      "taskOrGraderBugCount": 0,
+      "modelCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "estimatedCostUsd": 0,
+      "costCoverage": 0.0,
+      "failureModes": {
+        "passed": 25
+      }
+    },
+    {
+      "label": "react-local-solution",
+      "classification": "deterministic_harness_validation",
+      "claim": "Validates the ReAct loop with task-provided solution metadata instead of model reasoning.",
+      "agent_capability_result": false,
+      "trajectory": "artifacts/v1/react-local-solution.jsonl",
+      "tasks": 25,
+      "passed": 25,
+      "passRate": 1.0,
+      "averageScore": 1.0,
+      "toolCalls": 25,
+      "averageToolCalls": 1.0,
+      "averageRuntimeMs": 1062.36,
+      "timeoutRate": 0.0,
+      "verificationRate": 0.0,
+      "taskOrGraderBugCount": 0,
+      "modelCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "estimatedCostUsd": 0,
+      "costCoverage": 0.0,
+      "failureModes": {
+        "passed": 25
+      }
+    },
+    {
+      "label": "noop",
+      "classification": "negative_control",
+      "claim": "Validates failure recording and no-progress classification when the agent takes no action.",
+      "agent_capability_result": false,
+      "trajectory": "artifacts/v1/noop-negative-control.jsonl",
+      "tasks": 25,
+      "passed": 0,
+      "passRate": 0.0,
+      "averageScore": 0.0,
+      "toolCalls": 0,
+      "averageToolCalls": 0.0,
+      "averageRuntimeMs": 524.96,
+      "timeoutRate": 0.0,
+      "verificationRate": 0.0,
+      "taskOrGraderBugCount": 0,
+      "modelCalls": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "estimatedCostUsd": 0,
+      "costCoverage": 0.0,
+      "failureModes": {
+        "no_progress": 25
+      }
+    }
+  ]
+}

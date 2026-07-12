@@ -32,6 +32,16 @@ None of these is a model capability result.
 No real-model leaderboard is currently published.
 See the [real-model runbook](docs/model-runbook.md) for the fixed repeated-trial protocol and the metrics that must be present before a model result can be added.
 
+The [versioned v1 harness artifact](results/v1/README.md) records:
+
+| Control | Result | Interpretation |
+| --- | ---: | --- |
+| Scripted oracle | 25/25 | Bundled solutions and the end-to-end harness passed in Docker. |
+| ReAct + `local-solution` | 25/25 | The iterative loop passed using task-provided solution metadata. |
+| `noop` negative control | 0/25 | Untouched tasks failed, with all 25 classified as `no_progress`. |
+
+The artifact contains 0 model calls and `liveModelResults: null`.
+
 ## Development
 
 ```bash

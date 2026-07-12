@@ -60,6 +60,8 @@ def test_replay_and_report(tmp_path: Path) -> None:
     assert summary["input_tokens"] == 120
     assert summary["estimated_cost_usd"] == 0.00048
     assert "| test-agent | 1 | 100.0%" in comparison
+    assert report.endswith("\n") and not report.endswith("\n\n")
+    assert comparison.endswith("\n") and not comparison.endswith("\n\n")
 
 
 def test_report_includes_failure_evidence(tmp_path: Path) -> None:
