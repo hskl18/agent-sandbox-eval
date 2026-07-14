@@ -22,13 +22,20 @@ class ReActAgent:
         tool_calls = 0
         observations: list[dict] = []
         for step_index in range(context.task.limits.max_tool_calls + 1):
-            action = self.provider.next_action(
-                context.task,
-                StepContext(step_index=step_index, observations=observations),
-            )
-            record_provider_calls(context, self.provider, self.name)
+            try:
+                action = self.provider.next_action(
+                    context.task,
+                    StepContext(step_index=step_index, observations=observations),
+                )
+            finally:
+                record_provider_calls(context, self.provider, self.name)
             if action.kind == "final":
-                context.recorder.record("agent_message", context.task.id, agent=self.name, message=action.message)
+                context.recorder.record(
+                    "agent_message",
+                    context.task.id,
+                    agent=self.name,
+                    message=action.message,
+                )
                 return AgentResult(final_answer=action.message)
             if action.kind != "tool" or not action.tool:
                 raise ValueError(f"unsupported action: {action}")

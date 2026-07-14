@@ -52,6 +52,7 @@ class SuccessCriteria:
     path: str | None = None
     contains: str | None = None
     json_fields: dict[str, Any] = field(default_factory=dict)
+    negative_assertions: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SuccessCriteria":
@@ -72,6 +73,11 @@ class SuccessCriteria:
                 raise ValueError("success.fields must be a non-empty mapping for json_fields checks")
         if success_type not in {"command", "file_exists", "file_contains", "json_fields"}:
             raise ValueError(f"unsupported success.type: {success_type}")
+        negative_assertions = data.get("negative_assertions", [])
+        if not isinstance(negative_assertions, list) or not all(
+            isinstance(command, str) and command.strip() for command in negative_assertions
+        ):
+            raise ValueError("success.negative_assertions must be a list of non-empty commands")
         return cls(
             type=success_type,
             command=data.get("command"),
@@ -79,6 +85,7 @@ class SuccessCriteria:
             path=data.get("path"),
             contains=data.get("contains"),
             json_fields=dict(data.get("fields") or {}),
+            negative_assertions=list(negative_assertions),
         )
 
 

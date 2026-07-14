@@ -1,6 +1,7 @@
 # Agent Sandbox Eval
 
-Agent Sandbox Eval is a local-first framework for evaluating tool-using AI agents in reproducible Docker sandboxes. It provides task manifests, sandboxed execution, JSONL trajectory recording, deterministic grading, replay, and Markdown reports.
+Agent Sandbox Eval is a local-first framework for evaluating tool-using AI agents in reproducible Docker sandboxes.
+It provides task manifests, sandboxed execution, JSONL trajectory recording, deterministic grading, repeated-trial experiment matrices, replay, and machine-readable and Markdown reports.
 
 This repository is currently in the early MVP stage described in [`proposal.md`](proposal.md).
 
@@ -15,6 +16,7 @@ ase run --agent scripted --benchmark all --out runs/scripted-all.jsonl
 ase report runs/scripted-all.jsonl --out reports/scripted-all.md
 ase compare runs/react-all.jsonl runs/planner-all.jsonl runs/scripted-all.jsonl --out reports/compare.md
 ase replay runs/react-all.jsonl --task pass-command-001
+ase run-matrix examples/experiments/local-controls.yaml
 ```
 
 The default provider for `react` and `planner` is `local-solution`, a deterministic provider that converts bundled solution metadata into tool actions.
@@ -64,16 +66,23 @@ The current repository includes:
 - 6 SWE-lite tasks.
 - 3 MCP-like state-tool tasks.
 
-The `scripted` agent is expected to pass every bundled task. This validates task manifests, sandbox execution, trajectory recording, grading, reports, and replay without depending on a model provider.
+The `scripted` agent is expected to pass every bundled task.
+This validates task manifests, sandbox execution, trajectory recording, grading, reports, and replay without depending on a model provider.
 
-Failure reports include deterministic failure modes and evidence. See [docs/failure-analysis.md](docs/failure-analysis.md).
+Failure reports include deterministic failure modes and evidence.
+See [docs/failure-analysis.md](docs/failure-analysis.md).
 
 GitHub Actions runs the oracle, deterministic harness, and negative control against all 25 bundled tasks in Docker.
 It uploads the JSONL trajectories, Markdown reports, comparison, and environment manifest as the `harness-baseline-v1` workflow artifact.
 
-Agents, model providers, tools, and benchmark task packs can be extended through Python entry points. See [docs/extensions.md](docs/extensions.md).
+Agents, model providers, tools, and benchmark task packs can be extended through Python entry points.
+See [docs/extensions.md](docs/extensions.md).
 
 Research-backed optimization notes and the next reliability work are tracked in [docs/research-and-optimization.md](docs/research-and-optimization.md).
+
+The [experiment matrix guide](docs/experiment-matrices.md) documents versioned schemas, benchmark splits, deterministic run identifiers, resume validation, retry accounting, pass@k, pass^k, and pricing-source requirements.
+
+The [v0.2.0 release checklist](docs/v0.2.0-release-checklist.md) records the local and CI proof required before a maintainer creates a tag.
 
 Reproducible example commands are listed in [examples/README.md](examples/README.md).
 

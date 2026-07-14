@@ -1,0 +1,7 @@
+schema_version: 1
+id: smoke
+benchmark: all
+include_task_ids:
+  - pass-command-001
+  - fix-python-function-001
+  - update-status-001

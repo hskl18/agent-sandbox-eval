@@ -13,8 +13,10 @@ class PlannerExecutorAgent:
         self.provider = provider or LocalSolutionProvider()
 
     def run(self, context: AgentContext) -> AgentResult:
-        plan = self.provider.plan(context.task)
-        record_provider_calls(context, self.provider, self.name)
+        try:
+            plan = self.provider.plan(context.task)
+        finally:
+            record_provider_calls(context, self.provider, self.name)
         context.recorder.record(
             "agent_message",
             context.task.id,
@@ -25,11 +27,13 @@ class PlannerExecutorAgent:
         tool_calls = 0
         observations: list[dict] = []
         for index in range(1, context.task.limits.max_tool_calls + 2):
-            action = self.provider.next_action(
-                context.task,
-                StepContext(step_index=index - 1, observations=observations),
-            )
-            record_provider_calls(context, self.provider, self.name)
+            try:
+                action = self.provider.next_action(
+                    context.task,
+                    StepContext(step_index=index - 1, observations=observations),
+                )
+            finally:
+                record_provider_calls(context, self.provider, self.name)
             if action.kind == "final":
                 context.recorder.record(
                     "agent_message",

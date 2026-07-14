@@ -5,8 +5,12 @@ from pathlib import Path
 from typing import cast
 
 from agent_sandbox_eval.agents.registry import get_agent
+from agent_sandbox_eval.benchmarks.lint import lint_task, probe_task_baseline
 from agent_sandbox_eval.benchmarks.loader import load_benchmark, load_task
 from agent_sandbox_eval.benchmarks.loader import benchmark_roots, discover_task_files_many
+from agent_sandbox_eval.benchmarks.splits import apply_split, discover_splits, load_split
+from agent_sandbox_eval.experiments.runner import regenerate_matrix_reports, run_matrix
+from agent_sandbox_eval.experiments.schema import load_experiment
 from agent_sandbox_eval.extensions import (
     AGENT_ENTRY_POINT_GROUP,
     PROVIDER_ENTRY_POINT_GROUP,
@@ -19,10 +23,12 @@ from agent_sandbox_eval.reports.markdown import write_comparison_report, write_m
 from agent_sandbox_eval.runner import Runner
 from agent_sandbox_eval.runner import ToolFactory
 from agent_sandbox_eval.trajectories.replay import replay_trajectory
+from agent_sandbox_eval.version import package_version
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ase", description="Agent Sandbox Eval CLI")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version()}")
     parser.add_argument("--benchmarks-root", default="benchmarks", help="Benchmark task root directory.")
     subcommands = parser.add_subparsers(dest="command", required=True)
 
@@ -35,6 +41,18 @@ def build_parser() -> argparse.ArgumentParser:
     validate_tasks = subcommands.add_parser("validate-tasks", help="Validate benchmark task manifests.")
     validate_tasks.add_argument("--benchmark", default="all", help="Benchmark name or all.")
 
+    lint = subcommands.add_parser("lint-task", help="Lint a task manifest for authoring weaknesses.")
+    lint.add_argument("task", help="Path to task.yaml.")
+    lint.add_argument("--probe-setup", action="store_true", help="Probe the baseline grader in Docker.")
+    lint.add_argument("--image", default="python:3.13-slim", help="Docker image for the baseline probe.")
+
+    lint_tasks = subcommands.add_parser("lint-tasks", help="Lint benchmark task manifests.")
+    lint_tasks.add_argument("--benchmark", default="all", help="Benchmark name or all.")
+    lint_tasks.add_argument("--probe-setup", action="store_true", help="Probe baseline graders in Docker.")
+    lint_tasks.add_argument("--image", default="python:3.13-slim", help="Docker image for baseline probes.")
+
+    subcommands.add_parser("list-splits", help="List versioned benchmark splits.")
+
     run = subcommands.add_parser("run", help="Run tasks and write trajectory JSONL.")
     run.add_argument("--agent", default="noop", choices=["noop", "scripted", "react", "planner"])
     run.add_argument("--provider", default="local-solution", choices=["local-solution", "openai-responses"])
@@ -43,6 +61,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--out", default="runs/run.jsonl")
     run.add_argument("--image", default="python:3.13-slim", help="Docker image for sandbox execution.")
     run.add_argument("--keep-workspaces", action="store_true")
+
+    run_matrix_parser = subcommands.add_parser(
+        "run-matrix", help="Run or resume a versioned repeated-trial experiment."
+    )
+    run_matrix_parser.add_argument("experiment", help="Path to an experiment YAML file.")
+
+    matrix_report = subcommands.add_parser(
+        "matrix-report", help="Validate raw matrix artifacts and regenerate JSON and Markdown reports."
+    )
+    matrix_report.add_argument("experiment", help="Path to the experiment YAML used for the run.")
 
     replay = subcommands.add_parser("replay", help="Replay a trajectory JSONL file.")
     replay.add_argument("trajectory")
@@ -89,6 +117,52 @@ def main(argv: list[str] | None = None) -> None:
             count += 1
             print(f"valid\t{task.id}\t{task.benchmark}\t{task.title}")
         print(f"validated {count} task manifests")
+        return
+
+    if args.command in {"lint-task", "lint-tasks"}:
+        if args.command == "lint-task":
+            paths = [Path(args.task)]
+        else:
+            benchmark_filter = None if args.benchmark == "all" else args.benchmark
+            paths = discover_task_files_many(benchmark_roots(root), benchmark_filter)
+            if not paths:
+                raise SystemExit(f"no task manifests found for benchmark: {args.benchmark}")
+        issue_count = 0
+        for path in paths:
+            task = load_task(path)
+            issues = lint_task(task)
+            if args.probe_setup:
+                issues.extend(probe_task_baseline(task, docker_image=args.image))
+            if not issues:
+                print(f"clean\t{task.id}\t{task.benchmark}\t{task.title}")
+                continue
+            for issue in issues:
+                issue_count += 1
+                print(f"{issue.severity}\t{issue.code}\t{task.id}\t{issue.message}")
+        if issue_count:
+            raise SystemExit(f"task lint failed with {issue_count} issue(s)")
+        print(f"linted {len(paths)} task manifests")
+        return
+
+    if args.command == "list-splits":
+        for path in discover_splits(root):
+            split = load_split(path.stem, root)
+            print(f"{split.id}\t{split.benchmark}\t{path}")
+        return
+
+    if args.command in {"run-matrix", "matrix-report"}:
+        spec = load_experiment(Path(args.experiment))
+        tasks = load_benchmark(spec.benchmark.name, root)
+        benchmark_split = load_split(spec.benchmark.split, root)
+        tasks = apply_split(tasks, benchmark_split)
+        if args.command == "run-matrix":
+            result = run_matrix(spec, tasks, benchmark_split=benchmark_split)
+        else:
+            result = regenerate_matrix_reports(spec, tasks, benchmark_split=benchmark_split)
+        print(
+            f"units={result.scheduled_units} resumed={result.resumed_units} "
+            f"attempts={result.executed_attempts} summary={result.summary_path} report={result.report_path}"
+        )
         return
 
     if args.command == "run":

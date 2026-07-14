@@ -8,7 +8,7 @@ setup: []
 allowed_tools: [shell]
 success:
   type: command
-  command: cmp -s sorted.txt expected.txt
+  command: "python -c \"assert open('sorted.txt').read() == 'Ana\\nBo\\nMira\\nZo\\n'\""
   expected_exit_code: 0
 limits:
   timeout_seconds: 30
@@ -19,4 +19,3 @@ tags: [shell, files]
 solution:
   commands:
     - sort names.txt > sorted.txt
-

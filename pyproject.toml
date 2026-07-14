@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-sandbox-eval"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first evaluation harness for tool-using agents in Docker sandboxes."
 readme = "README.md"
 requires-python = ">=3.11"

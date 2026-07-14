@@ -8,7 +8,7 @@ setup: []
 allowed_tools: [shell, python]
 success:
   type: command
-  command: "python -c \"import json; assert open('normalized.json').read() == open('expected.json').read() and json.load(open('normalized.json')) == {'a': 1, 'items': [2, 1], 'z': 3}\""
+  command: "python -c \"import json; text=open('normalized.json').read(); assert text == '{\\n  \\\"a\\\": 1,\\n  \\\"items\\\": [\\n    2,\\n    1\\n  ],\\n  \\\"z\\\": 3\\n}\\n' and json.loads(text) == {'a': 1, 'items': [2, 1], 'z': 3}\""
   expected_exit_code: 0
 limits:
   timeout_seconds: 30

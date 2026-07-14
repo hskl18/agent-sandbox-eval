@@ -33,7 +33,9 @@ jobs:
         run: python -m mypy agent_sandbox_eval
 
       - name: Validate bundled tasks
-        run: ase validate-tasks --benchmark all
+        run: |
+          ase validate-tasks --benchmark all
+          ase lint-tasks --benchmark all
 
       - name: Run Docker harness baselines
         run: |
@@ -51,9 +53,31 @@ jobs:
             --noop artifacts/v1/noop-negative-control.jsonl \
             --out artifacts/v1/manifest.json
 
+      - name: Run repeated local-control matrix
+        run: |
+          ase run-matrix examples/experiments/local-controls.yaml
+          sha256sum runs/v0.2-local-controls/summary.json runs/v0.2-local-controls/report.md > /tmp/matrix-first.sha256
+          ase run-matrix examples/experiments/local-controls.yaml
+          sha256sum runs/v0.2-local-controls/summary.json runs/v0.2-local-controls/report.md > /tmp/matrix-second.sha256
+          diff -u /tmp/matrix-first.sha256 /tmp/matrix-second.sha256
+          ase matrix-report examples/experiments/local-controls.yaml
+          sha256sum runs/v0.2-local-controls/summary.json runs/v0.2-local-controls/report.md > /tmp/matrix-regenerated.sha256
+          diff -u /tmp/matrix-second.sha256 /tmp/matrix-regenerated.sha256
+          python tools/validate_matrix_controls.py \
+            --summary runs/v0.2-local-controls/summary.json \
+            --expected-task-count 3 \
+            --expected-trials 2
+
       - name: Upload harness baseline artifact
         uses: actions/upload-artifact@v6
         with:
           name: harness-baseline-v1
           path: artifacts/v1
+          if-no-files-found: error
+
+      - name: Upload matrix control artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: matrix-controls-v0.2
+          path: runs/v0.2-local-controls
           if-no-files-found: error

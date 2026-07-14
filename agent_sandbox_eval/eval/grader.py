@@ -60,6 +60,19 @@ class Grader:
             passed = raw.exit_code == 0
         else:
             raise ValueError(f"unsupported success criteria for task {task.id}: {task.success.type}")
+        if passed:
+            for command in task.success.negative_assertions:
+                assertion_result = sandbox.run(command, timeout_seconds=task.limits.timeout_seconds)
+                evidence.extend(
+                    [
+                        f"Negative assertion: {command}",
+                        f"Negative assertion exit code: {assertion_result.exit_code}",
+                    ]
+                )
+                if assertion_result.exit_code != 0:
+                    raw = assertion_result
+                    passed = False
+                    break
         if raw.stdout.strip():
             evidence.append(f"stdout: {raw.stdout.strip()[:500]}")
         if raw.stderr.strip():
