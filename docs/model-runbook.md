@@ -70,7 +70,8 @@ It does not store the API key, full provider response, or raw hidden reasoning.
 
 Run the same command after an interruption.
 Completed units resume only after their attempt markers, hashes, and raw event streams validate.
-Corrupt or missing raw evidence stops the run.
+The snapshot also requires the same resolved task content, split definition, core implementation, attempt executor, and installed extension identities.
+Corrupt, missing, or semantically inconsistent raw evidence stops the run.
 
 ## Report
 

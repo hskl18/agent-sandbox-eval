@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,13 @@ from agent_sandbox_eval.version import TRAJECTORY_SCHEMA_VERSION
 
 class ArtifactValidationError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class AttemptArtifact:
+    marker: dict[str, Any]
+    raw_path: Path | None
+    events: list[dict[str, Any]]
 
 
 def canonical_json(data: object) -> str:
@@ -89,12 +97,15 @@ def validate_trajectory(
                 "raw trajectory must contain exactly one run_start, run_end, and grader_result: "
                 f"{path}"
             )
-        if events[0].get("event_type") != "run_start" or events[-1].get("event_type") != "run_end":
+        last_boundary = events[-1].get("event_type")
+        if last_boundary == "attempt_result" and len(events) >= 2:
+            last_boundary = events[-2].get("event_type")
+        if events[0].get("event_type") != "run_start" or last_boundary != "run_end":
             raise ArtifactValidationError(f"raw trajectory has incomplete event boundaries: {path}")
     return events
 
 
-def read_attempt_marker(path: Path, root: Path) -> dict[str, Any]:
+def read_attempt_marker(path: Path, root: Path) -> AttemptArtifact:
     if not path.exists():
         raise ArtifactValidationError(f"attempt marker is missing: {path}")
     try:
@@ -120,20 +131,26 @@ def read_attempt_marker(path: Path, root: Path) -> dict[str, Any]:
     if raw_relative is None:
         if data.get("status") != "runner_error":
             raise ArtifactValidationError(f"non-runner attempt has no raw trajectory: {path}")
-        return data
+        return AttemptArtifact(marker=data, raw_path=None, events=[])
     raw_path = (root / str(raw_relative)).resolve()
     if root.resolve() not in raw_path.parents:
         raise ArtifactValidationError(f"attempt raw_path escapes the artifact root: {path}")
+    expected_name = path.name.removesuffix(".attempt.json") + ".jsonl"
+    expected_raw_path = path.with_name(expected_name).resolve()
+    if raw_path != expected_raw_path:
+        raise ArtifactValidationError(
+            f"attempt marker references an unexpected raw trajectory: {path}: {raw_path}"
+        )
     expected_hash = data.get("raw_sha256")
     actual_hash = sha256_file(raw_path) if raw_path.exists() else None
     if actual_hash != expected_hash:
         raise ArtifactValidationError(
             f"raw trajectory hash mismatch or missing file for marker {path}: {raw_path}"
         )
-    validate_trajectory(
+    events = validate_trajectory(
         raw_path,
         expected_run_id=str(data["run_id"]),
         expected_task_id=str(data["task_id"]),
         require_complete=data.get("status") != "runner_error",
     )
-    return data
+    return AttemptArtifact(marker=data, raw_path=raw_path, events=events)

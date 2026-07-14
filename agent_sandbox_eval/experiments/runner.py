@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from agent_sandbox_eval.agents.registry import get_agent
 from agent_sandbox_eval.benchmarks.schema import Limits, Task
+from agent_sandbox_eval.benchmarks.splits import BenchmarkSplit
 from agent_sandbox_eval.experiments.artifacts import (
     ArtifactValidationError,
     ensure_config_snapshot,
@@ -18,10 +19,12 @@ from agent_sandbox_eval.experiments.artifacts import (
     validate_trajectory,
     write_atomic_json,
 )
+from agent_sandbox_eval.experiments.identity import ExperimentIdentity, resolve_experiment_identity
 from agent_sandbox_eval.experiments.metrics import build_experiment_summary
 from agent_sandbox_eval.experiments.reports import write_experiment_reports
 from agent_sandbox_eval.experiments.schema import ExperimentSpec, MatrixCell
 from agent_sandbox_eval.runner import Runner
+from agent_sandbox_eval.trajectories.recorder import TrajectoryRecorder, append_trajectory_event
 
 
 @dataclass(frozen=True)
@@ -34,6 +37,7 @@ class AttemptContext:
     seed: int
     run_id: str
     trajectory_path: Path
+    experiment_fingerprint: str
 
 
 @dataclass(frozen=True)
@@ -71,13 +75,16 @@ class _Unit:
 def run_matrix(
     spec: ExperimentSpec,
     tasks: list[Task],
+    *,
+    benchmark_split: BenchmarkSplit,
     attempt_executor: AttemptExecutor | None = None,
 ) -> MatrixRunResult:
     if not tasks:
         raise ValueError("matrix requires at least one task")
     root = spec.artifacts.root
-    ensure_config_snapshot(root, spec.to_dict())
     executor = attempt_executor or execute_attempt
+    identity = resolve_experiment_identity(spec, tasks, benchmark_split, executor)
+    ensure_config_snapshot(root, identity.snapshot)
     units = [
         _Unit(cell=cell, task=task, trial=trial, seed=_trial_seed(spec, cell, task, trial))
         for cell in spec.matrix
@@ -87,7 +94,7 @@ def run_matrix(
     pending: list[tuple[_Unit, int]] = []
     resumed = 0
     for unit in units:
-        next_attempt = _next_attempt(spec, unit)
+        next_attempt = _next_attempt(spec, identity, unit)
         if next_attempt is None:
             resumed += 1
         else:
@@ -97,14 +104,16 @@ def run_matrix(
     if pending:
         with ThreadPoolExecutor(max_workers=spec.concurrency, thread_name_prefix="ase-matrix") as pool:
             futures = {
-                pool.submit(_run_unit, spec, unit, start_attempt, executor): unit
+                pool.submit(_run_unit, spec, identity, unit, start_attempt, executor): unit
                 for unit, start_attempt in pending
             }
             for future in as_completed(futures):
                 executed_attempts += future.result()
 
-    attempts = collect_attempts(spec, units, require_terminal=True)
-    summary = build_experiment_summary(spec, attempts, [task.id for task in tasks])
+    attempts = collect_attempts(spec, identity, units, require_terminal=True)
+    summary = build_experiment_summary(
+        spec, attempts, [task.id for task in tasks], identity.fingerprint
+    )
     summary_path = root / spec.artifacts.summary_json
     report_path = root / spec.artifacts.report_markdown
     write_experiment_reports(summary, summary_path, report_path)
@@ -118,16 +127,26 @@ def run_matrix(
     )
 
 
-def regenerate_matrix_reports(spec: ExperimentSpec, tasks: list[Task]) -> MatrixRunResult:
+def regenerate_matrix_reports(
+    spec: ExperimentSpec,
+    tasks: list[Task],
+    *,
+    benchmark_split: BenchmarkSplit,
+    attempt_executor: AttemptExecutor | None = None,
+) -> MatrixRunResult:
+    executor = attempt_executor or execute_attempt
+    identity = resolve_experiment_identity(spec, tasks, benchmark_split, executor)
     units = [
         _Unit(cell=cell, task=task, trial=trial, seed=_trial_seed(spec, cell, task, trial))
         for cell in spec.matrix
         for task in sorted(tasks, key=lambda item: (item.benchmark, item.id))
         for trial in range(1, spec.trials + 1)
     ]
-    ensure_config_snapshot(spec.artifacts.root, spec.to_dict())
-    attempts = collect_attempts(spec, units, require_terminal=True)
-    summary = build_experiment_summary(spec, attempts, [task.id for task in tasks])
+    ensure_config_snapshot(spec.artifacts.root, identity.snapshot)
+    attempts = collect_attempts(spec, identity, units, require_terminal=True)
+    summary = build_experiment_summary(
+        spec, attempts, [task.id for task in tasks], identity.fingerprint
+    )
     summary_path = spec.artifacts.root / spec.artifacts.summary_json
     report_path = spec.artifacts.root / spec.artifacts.report_markdown
     write_experiment_reports(summary, summary_path, report_path)
@@ -158,7 +177,7 @@ def execute_attempt(context: AttemptContext) -> AttemptObservation:
             normalize_timestamps=context.spec.artifacts.normalize_timestamps,
             run_metadata={
                 "experiment": context.spec.name,
-                "experiment_fingerprint": context.spec.fingerprint,
+                "experiment_fingerprint": context.experiment_fingerprint,
                 "matrix_cell": context.cell.id,
                 "provider": context.cell.model.provider,
                 "model": context.cell.model.name,
@@ -171,11 +190,14 @@ def execute_attempt(context: AttemptContext) -> AttemptObservation:
     except Exception as exc:
         duration_ms = round((time.monotonic() - started) * 1000)
         exception_mode, exception_scope = _classify_execution_exception(exc)
+        input_tokens, output_tokens = _recover_partial_usage(context, task.id)
         return AttemptObservation(
             passed=None,
             failure_mode=exception_mode,
             failure_scope=exception_scope,
             duration_ms=duration_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             error=f"{type(exc).__name__}: {str(exc)[:1000]}",
         )
 
@@ -210,6 +232,7 @@ def execute_attempt(context: AttemptContext) -> AttemptObservation:
 
 def collect_attempts(
     spec: ExperimentSpec,
+    identity: ExperimentIdentity,
     units: list[_Unit],
     require_terminal: bool,
 ) -> list[dict[str, Any]]:
@@ -224,8 +247,10 @@ def collect_attempts(
                         f"orphan raw trajectory has no attempt marker: {trajectory_path}"
                     )
                 break
-            marker = read_attempt_marker(marker_path, spec.artifacts.root)
-            _validate_marker_identity(spec, unit, attempt, marker)
+            artifact = read_attempt_marker(marker_path, spec.artifacts.root)
+            marker = artifact.marker
+            _validate_marker_identity(identity, unit, attempt, marker)
+            _validate_marker_evidence(spec, unit, marker, artifact.events)
             collected.append(marker)
             terminal = _is_terminal(marker, attempt, spec.retry.max_attempts)
             if terminal:
@@ -233,16 +258,23 @@ def collect_attempts(
                 break
         if require_terminal and not terminal:
             raise ArtifactValidationError(
-                f"matrix unit has no terminal attempt: cell={unit.cell.id} task={unit.task.id} trial={unit.trial}"
+                "matrix unit has no terminal attempt: "
+                f"cell={unit.cell.id} task={unit.task.id} trial={unit.trial}"
             )
     return sorted(
         collected,
-        key=lambda item: (str(item["cell_id"]), str(item["task_id"]), int(item["trial"]), int(item["attempt"])),
+        key=lambda item: (
+            str(item["cell_id"]),
+            str(item["task_id"]),
+            int(item["trial"]),
+            int(item["attempt"]),
+        ),
     )
 
 
 def _run_unit(
     spec: ExperimentSpec,
+    identity: ExperimentIdentity,
     unit: _Unit,
     start_attempt: int,
     executor: AttemptExecutor,
@@ -255,7 +287,7 @@ def _run_unit(
             raise ArtifactValidationError(
                 f"refusing to overwrite an existing attempt artifact: {trajectory_path}"
             )
-        run_id = _run_id(spec, unit, attempt)
+        run_id = _run_id(identity, unit, attempt)
         context = AttemptContext(
             spec=spec,
             cell=unit.cell,
@@ -265,6 +297,7 @@ def _run_unit(
             seed=unit.seed,
             run_id=run_id,
             trajectory_path=trajectory_path,
+            experiment_fingerprint=identity.fingerprint,
         )
         observation = executor(context)
         executed += 1
@@ -285,6 +318,15 @@ def _write_attempt(
         status = "runner_error"
     elif observation.failure_scope == "environment":
         status = "environment_failed"
+    retry_eligible = observation.failure_mode in set(spec.retry.on)
+    estimated_cost = _estimated_cost(context.cell, observation.input_tokens, observation.output_tokens)
+    _record_attempt_result(
+        context,
+        observation,
+        status,
+        retry_eligible,
+        estimated_cost,
+    )
     raw_path: str | None = None
     raw_hash: str | None = None
     if context.trajectory_path.exists():
@@ -300,10 +342,9 @@ def _write_attempt(
         raise ArtifactValidationError(
             f"attempt executor did not produce a raw trajectory: {context.trajectory_path}"
         )
-    retry_eligible = observation.failure_mode in set(spec.retry.on)
-    estimated_cost = _estimated_cost(context.cell, observation.input_tokens, observation.output_tokens)
     marker: dict[str, object] = {
         "run_id": context.run_id,
+        "experiment_fingerprint": context.experiment_fingerprint,
         "cell_id": context.cell.id,
         "task_id": context.task.id,
         "trial": context.trial,
@@ -327,7 +368,62 @@ def _write_attempt(
     return marker
 
 
-def _next_attempt(spec: ExperimentSpec, unit: _Unit) -> int | None:
+def _record_attempt_result(
+    context: AttemptContext,
+    observation: AttemptObservation,
+    status: str,
+    retry_eligible: bool,
+    estimated_cost: float | None,
+) -> None:
+    if context.trajectory_path.exists():
+        validate_trajectory(
+            context.trajectory_path,
+            expected_run_id=context.run_id,
+            expected_task_id=context.task.id,
+            require_complete=status != "runner_error",
+        )
+    elif status == "runner_error":
+        recorder = TrajectoryRecorder(
+            context.trajectory_path,
+            context.run_id,
+            normalize_timestamps=context.spec.artifacts.normalize_timestamps,
+        )
+        recorder.record(
+            "run_start",
+            agent=context.cell.agent.name,
+            task_count=1,
+            experiment=context.spec.name,
+            experiment_fingerprint=context.experiment_fingerprint,
+            matrix_cell=context.cell.id,
+            trial=context.trial,
+            attempt=context.attempt,
+            seed=context.seed,
+        )
+    else:
+        raise ArtifactValidationError(
+            f"attempt executor did not produce a raw trajectory: {context.trajectory_path}"
+        )
+    append_trajectory_event(
+        context.trajectory_path,
+        context.run_id,
+        "attempt_result",
+        context.task.id,
+        normalize_timestamps=context.spec.artifacts.normalize_timestamps,
+        status=status,
+        passed=observation.passed,
+        failure_mode=observation.failure_mode,
+        failure_scope=observation.failure_scope,
+        retry_eligible=retry_eligible,
+        duration_ms=observation.duration_ms,
+        input_tokens=observation.input_tokens,
+        output_tokens=observation.output_tokens,
+        estimated_cost_usd=estimated_cost,
+        pricing_source=context.cell.model.pricing.source if context.cell.model.pricing else None,
+        error=observation.error,
+    )
+
+
+def _next_attempt(spec: ExperimentSpec, identity: ExperimentIdentity, unit: _Unit) -> int | None:
     for attempt in range(1, spec.retry.max_attempts + 1):
         trajectory_path, marker_path = _artifact_paths(spec, unit, attempt)
         if not marker_path.exists():
@@ -336,8 +432,10 @@ def _next_attempt(spec: ExperimentSpec, unit: _Unit) -> int | None:
                     f"orphan raw trajectory has no attempt marker: {trajectory_path}"
                 )
             return attempt
-        marker = read_attempt_marker(marker_path, spec.artifacts.root)
-        _validate_marker_identity(spec, unit, attempt, marker)
+        artifact = read_attempt_marker(marker_path, spec.artifacts.root)
+        marker = artifact.marker
+        _validate_marker_identity(identity, unit, attempt, marker)
+        _validate_marker_evidence(spec, unit, marker, artifact.events)
         if _is_terminal(marker, attempt, spec.retry.max_attempts):
             _reject_later_attempts(spec, unit, attempt)
             return None
@@ -359,13 +457,14 @@ def _reject_later_attempts(spec: ExperimentSpec, unit: _Unit, terminal_attempt: 
 
 
 def _validate_marker_identity(
-    spec: ExperimentSpec,
+    identity: ExperimentIdentity,
     unit: _Unit,
     attempt: int,
     marker: dict[str, Any],
 ) -> None:
     expected = {
-        "run_id": _run_id(spec, unit, attempt),
+        "run_id": _run_id(identity, unit, attempt),
+        "experiment_fingerprint": identity.fingerprint,
         "cell_id": unit.cell.id,
         "task_id": unit.task.id,
         "trial": unit.trial,
@@ -377,6 +476,117 @@ def _validate_marker_identity(
         raise ArtifactValidationError(
             "attempt marker identity mismatch for fields " + ", ".join(mismatches)
         )
+
+
+def _validate_marker_evidence(
+    spec: ExperimentSpec,
+    unit: _Unit,
+    marker: dict[str, Any],
+    events: list[dict[str, Any]],
+) -> None:
+    model_calls = [event for event in events if event.get("event_type") == "model_call"]
+    input_tokens = _sum_model_tokens(model_calls, "input_tokens")
+    output_tokens = _sum_model_tokens(model_calls, "output_tokens")
+    expected: dict[str, object] = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_cost_usd": _estimated_cost(unit.cell, input_tokens, output_tokens),
+        "pricing_source": unit.cell.model.pricing.source if unit.cell.model.pricing else None,
+    }
+    grades = [event for event in events if event.get("event_type") == "grader_result"]
+    results = [event for event in events if event.get("event_type") == "attempt_result"]
+    if len(results) != 1 or events[-1] is not results[0]:
+        raise ArtifactValidationError("raw trajectory has invalid attempt_result evidence")
+    result = results[0]
+    duration_ms = result.get("duration_ms")
+    if isinstance(duration_ms, bool) or not isinstance(duration_ms, int) or duration_ms < 0:
+        raise ArtifactValidationError("raw attempt_result has invalid duration_ms")
+    if result.get("status") != "runner_error":
+        if len(grades) != 1 or not isinstance(grades[0].get("passed"), bool):
+            raise ArtifactValidationError("raw trajectory has invalid grader evidence")
+        passed = bool(grades[0]["passed"])
+        failure_mode = None if passed else str(grades[0].get("failure_mode") or "unknown_failure")
+        failure_scope = "passed" if passed else _failure_scope(failure_mode)
+        budget_failure = _budget_failure_values(spec, unit.cell, input_tokens, output_tokens)
+        if budget_failure:
+            passed = False
+            failure_mode = budget_failure
+            failure_scope = "budget"
+        status = "passed" if passed else "failed"
+        if failure_scope == "environment":
+            status = "environment_failed"
+        expected.update(
+            {
+                "passed": passed,
+                "failure_mode": failure_mode,
+                "failure_scope": failure_scope,
+                "status": status,
+                "retry_eligible": failure_mode in set(spec.retry.on),
+                "duration_ms": duration_ms,
+                "error": None,
+            }
+        )
+    else:
+        if len(grades) > 1:
+            raise ArtifactValidationError("raw runner-error trajectory has multiple grader results")
+        failure_mode_value = result.get("failure_mode")
+        if not isinstance(failure_mode_value, str) or not failure_mode_value:
+            raise ArtifactValidationError("raw attempt_result has no failure_mode")
+        error_text = result.get("error")
+        if not isinstance(error_text, str) or not error_text:
+            raise ArtifactValidationError("raw attempt_result has no error text")
+        expected.update(
+            {
+                "passed": None,
+                "failure_mode": failure_mode_value,
+                "failure_scope": _failure_scope(failure_mode_value),
+                "status": "runner_error",
+                "retry_eligible": failure_mode_value in set(spec.retry.on),
+                "duration_ms": duration_ms,
+                "error": error_text,
+            }
+        )
+
+    raw_mismatches = [key for key, value in expected.items() if result.get(key) != value]
+    if raw_mismatches:
+        raise ArtifactValidationError(
+            "raw attempt_result evidence mismatch for fields " + ", ".join(raw_mismatches)
+        )
+
+    mismatches = [key for key, value in expected.items() if marker.get(key) != value]
+    if mismatches:
+        raise ArtifactValidationError(
+            "attempt marker evidence mismatch for fields " + ", ".join(mismatches)
+        )
+
+
+def _sum_model_tokens(model_calls: list[dict[str, Any]], field: str) -> int:
+    total = 0
+    for event in model_calls:
+        value = event.get(field, 0)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ArtifactValidationError(f"raw model_call has invalid {field}")
+        total += value
+    return total
+
+
+def _recover_partial_usage(context: AttemptContext, task_id: str) -> tuple[int, int]:
+    if not context.trajectory_path.exists():
+        return 0, 0
+    try:
+        events = validate_trajectory(
+            context.trajectory_path,
+            expected_run_id=context.run_id,
+            expected_task_id=task_id,
+            require_complete=False,
+        )
+        model_calls = [event for event in events if event.get("event_type") == "model_call"]
+        return (
+            _sum_model_tokens(model_calls, "input_tokens"),
+            _sum_model_tokens(model_calls, "output_tokens"),
+        )
+    except ArtifactValidationError:
+        return 0, 0
 
 
 def _artifact_paths(spec: ExperimentSpec, unit: _Unit, attempt: int) -> tuple[Path, Path]:
@@ -392,9 +602,9 @@ def _artifact_paths(spec: ExperimentSpec, unit: _Unit, attempt: int) -> tuple[Pa
     return trajectory, marker
 
 
-def _run_id(spec: ExperimentSpec, unit: _Unit, attempt: int) -> str:
+def _run_id(identity: ExperimentIdentity, unit: _Unit, attempt: int) -> str:
     return (
-        f"ase-{spec.fingerprint}-{_slug(unit.cell.id)}-{_slug(unit.task.id)}-"
+        f"ase-{identity.fingerprint}-{_slug(unit.cell.id)}-{_slug(unit.task.id)}-"
         f"t{unit.trial:04d}-s{unit.seed:010d}-a{attempt:02d}"
     )
 
@@ -423,8 +633,10 @@ def _apply_budgets(task: Task, spec: ExperimentSpec) -> Task:
 
 
 def _failure_scope(failure_mode: str | None) -> str:
-    if failure_mode == "environment_setup_failure":
+    if failure_mode in {"environment_setup_failure", "provider_transport_failure"}:
         return "environment"
+    if failure_mode == "configuration_error":
+        return "configuration"
     if failure_mode == "runner_error":
         return "harness"
     if failure_mode in {"timeout", "exceeded_budget", "exceeded_experiment_budget"}:
@@ -449,12 +661,21 @@ def _classify_execution_exception(exc: Exception) -> tuple[str, str]:
 
 
 def _budget_failure(context: AttemptContext, input_tokens: int, output_tokens: int) -> str | None:
-    budgets = context.spec.budgets
+    return _budget_failure_values(context.spec, context.cell, input_tokens, output_tokens)
+
+
+def _budget_failure_values(
+    spec: ExperimentSpec,
+    cell: MatrixCell,
+    input_tokens: int,
+    output_tokens: int,
+) -> str | None:
+    budgets = spec.budgets
     if budgets.max_input_tokens is not None and input_tokens > budgets.max_input_tokens:
         return "exceeded_experiment_budget"
     if budgets.max_output_tokens is not None and output_tokens > budgets.max_output_tokens:
         return "exceeded_experiment_budget"
-    estimated_cost = _estimated_cost(context.cell, input_tokens, output_tokens)
+    estimated_cost = _estimated_cost(cell, input_tokens, output_tokens)
     if (
         budgets.max_estimated_cost_usd is not None
         and estimated_cost is not None

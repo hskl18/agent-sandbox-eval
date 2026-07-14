@@ -1,6 +1,7 @@
 # Trajectory Schema
 
-Trajectories are JSONL files. Each line is one event.
+Trajectories are JSONL files.
+Each line is one event.
 
 Common fields:
 
@@ -21,6 +22,9 @@ Required event types:
 - `grader_result`
 - `task_end`
 - `run_end`
+
+Experiment attempts append an `attempt_result` event after the complete run boundary or after the last valid partial event.
+This event binds the attempt marker's reportable outcome, failure classification, retry decision, latency, token usage, cost, pricing source, and error text to the hashed raw trajectory.
 
 The schema is intentionally append-only so long benchmark runs can stream to disk.
 

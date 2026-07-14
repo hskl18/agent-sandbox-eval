@@ -16,6 +16,7 @@ def build_experiment_summary(
     spec: ExperimentSpec,
     attempts: list[dict[str, Any]],
     task_ids: list[str],
+    experiment_fingerprint: str,
 ) -> dict[str, object]:
     by_cell: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for attempt in attempts:
@@ -24,7 +25,8 @@ def build_experiment_summary(
         "schema_version": EXPERIMENT_REPORT_SCHEMA_VERSION,
         "experiment": {
             "name": spec.name,
-            "fingerprint": spec.fingerprint,
+            "fingerprint": experiment_fingerprint,
+            "configuration_fingerprint": spec.fingerprint,
             "seed": spec.seed,
             "trials": spec.trials,
             "benchmark": spec.benchmark.to_dict(),

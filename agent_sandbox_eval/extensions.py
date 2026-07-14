@@ -16,6 +16,8 @@ class ExtensionSpec:
     name: str
     group: str
     value: str
+    distribution: str | None = None
+    version: str | None = None
 
 
 def load_entry_point(group: str, name: str) -> Callable[..., Any] | None:
@@ -30,7 +32,13 @@ def load_entry_point(group: str, name: str) -> Callable[..., Any] | None:
 
 def list_entry_points(group: str) -> list[ExtensionSpec]:
     return [
-        ExtensionSpec(name=entry_point.name, group=group, value=entry_point.value)
+        ExtensionSpec(
+            name=entry_point.name,
+            group=group,
+            value=entry_point.value,
+            distribution=getattr(getattr(entry_point, "dist", None), "name", None),
+            version=getattr(getattr(entry_point, "dist", None), "version", None),
+        )
         for entry_point in metadata.entry_points(group=group)
     ]
 

@@ -20,7 +20,7 @@ The schema records these reproducibility inputs:
 - `artifacts` identifies the raw trajectory directory and machine-readable and Markdown report destinations.
 
 Relative artifact roots are resolved from the experiment file.
-The matrix snapshot stores the resolved paths and a configuration fingerprint.
+The matrix snapshot stores the resolved experiment specification, benchmark split, selected task definitions, task workspace content hashes, core implementation hashes, attempt executor identity, extension identities, and a fingerprint over those inputs.
 An existing artifact root can only be resumed with an identical snapshot.
 
 ## Run and Resume
@@ -33,7 +33,7 @@ ase run-matrix examples/experiments/local-controls.yaml
 
 Run the same command again to resume.
 Completed units are validated and skipped.
-Missing raw files, changed hashes, malformed events, non-contiguous steps, and mismatched run identities stop the run instead of being silently regenerated.
+Missing raw files, changed hashes, malformed events, non-contiguous steps, changed task content, changed split content, changed implementation identity, and mismatched run identities stop the run instead of being silently regenerated.
 
 Regenerate both reports from the validated raw artifacts with:
 
@@ -43,6 +43,8 @@ ase matrix-report examples/experiments/local-controls.yaml
 
 Report regeneration never calls an agent or provider.
 It fails closed when an attempt marker or referenced raw trajectory is missing or corrupt.
+Marker outcomes, failure scopes, retry decisions, latency, token counts, and estimated cost are checked against a hashed raw `attempt_result`, grader evidence, and model-call evidence before reporting.
+When execution fails after one or more model calls, valid partial raw events still contribute their recorded token usage and estimated cost while the trajectory remains marked incomplete.
 
 ## Reliability Metrics
 

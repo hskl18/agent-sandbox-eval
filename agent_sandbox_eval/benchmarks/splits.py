@@ -20,6 +20,17 @@ class BenchmarkSplit:
     include_tags: list[str] = field(default_factory=list)
     exclude_tags: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "id": self.id,
+            "benchmark": self.benchmark,
+            "include_task_ids": self.include_task_ids,
+            "exclude_task_ids": self.exclude_task_ids,
+            "include_tags": self.include_tags,
+            "exclude_tags": self.exclude_tags,
+        }
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "BenchmarkSplit":
         schema_version = int(data.get("schema_version", 0))

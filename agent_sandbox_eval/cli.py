@@ -153,11 +153,12 @@ def main(argv: list[str] | None = None) -> None:
     if args.command in {"run-matrix", "matrix-report"}:
         spec = load_experiment(Path(args.experiment))
         tasks = load_benchmark(spec.benchmark.name, root)
-        tasks = apply_split(tasks, load_split(spec.benchmark.split, root))
+        benchmark_split = load_split(spec.benchmark.split, root)
+        tasks = apply_split(tasks, benchmark_split)
         if args.command == "run-matrix":
-            result = run_matrix(spec, tasks)
+            result = run_matrix(spec, tasks, benchmark_split=benchmark_split)
         else:
-            result = regenerate_matrix_reports(spec, tasks)
+            result = regenerate_matrix_reports(spec, tasks, benchmark_split=benchmark_split)
         print(
             f"units={result.scheduled_units} resumed={result.resumed_units} "
             f"attempts={result.executed_attempts} summary={result.summary_path} report={result.report_path}"

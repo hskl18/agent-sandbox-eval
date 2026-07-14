@@ -63,6 +63,10 @@ jobs:
           ase matrix-report examples/experiments/local-controls.yaml
           sha256sum runs/v0.2-local-controls/summary.json runs/v0.2-local-controls/report.md > /tmp/matrix-regenerated.sha256
           diff -u /tmp/matrix-second.sha256 /tmp/matrix-regenerated.sha256
+          python tools/validate_matrix_controls.py \
+            --summary runs/v0.2-local-controls/summary.json \
+            --expected-task-count 3 \
+            --expected-trials 2
 
       - name: Upload harness baseline artifact
         uses: actions/upload-artifact@v6
