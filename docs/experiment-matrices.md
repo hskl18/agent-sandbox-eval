@@ -22,6 +22,11 @@ The schema records these reproducibility inputs:
 Relative artifact roots are resolved from the experiment file.
 The matrix snapshot stores the resolved experiment specification, benchmark split, selected task definitions, task workspace content hashes, core implementation hashes, attempt executor identity, extension identities, and a fingerprint over those inputs.
 An existing artifact root can only be resumed with an identical snapshot.
+Workspace snapshots hash file bytes, type, size, permissions, and modification time without following symbolic links.
+Task workspaces containing internal, external, broken, or cyclic symbolic links are rejected before sandbox copying or execution.
+Custom attempt executor objects must implement `__ase_experiment_identity__()` and return a stable mapping containing every behavior-driving configuration value.
+Executor identity mappings may contain only finite JSON scalars, string-keyed mappings, lists, and tuples.
+Unknown, cyclic, or unsupported executor identity state fails closed before execution.
 
 ## Run and Resume
 
@@ -45,6 +50,7 @@ Report regeneration never calls an agent or provider.
 It fails closed when an attempt marker or referenced raw trajectory is missing or corrupt.
 Marker outcomes, failure scopes, retry decisions, latency, token counts, and estimated cost are checked against a hashed raw `attempt_result`, grader evidence, and model-call evidence before reporting.
 When execution fails after one or more model calls, valid partial raw events still contribute their recorded token usage and estimated cost while the trajectory remains marked incomplete.
+ReAct and planner agents drain provider call telemetry in a `finally` path, so usage returned before output or action parsing fails is recorded exactly once.
 
 ## Reliability Metrics
 

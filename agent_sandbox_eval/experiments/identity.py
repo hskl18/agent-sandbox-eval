@@ -3,9 +3,8 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
-import os
+import math
 import platform
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from agent_sandbox_eval.benchmarks.schema import Task
 from agent_sandbox_eval.benchmarks.splits import BenchmarkSplit
 from agent_sandbox_eval.experiments.schema import ExperimentSpec
 from agent_sandbox_eval.extensions import list_all_entry_points
+from agent_sandbox_eval.sandbox.workspace import snapshot_task_workspace
 from agent_sandbox_eval.version import package_version
 
 
@@ -88,28 +88,8 @@ def _task_identity(task: Task) -> dict[str, object]:
         "tags": task.tags,
         "solution_commands": task.solution_commands,
         "solution_tool_calls": task.solution_tool_calls,
-        "workspace": _workspace_identity(task.workspace),
+        "workspace": snapshot_task_workspace(task.workspace),
     }
-
-
-def _workspace_identity(root: Path) -> list[dict[str, object]]:
-    entries: list[dict[str, object]] = []
-    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
-        relative = path.relative_to(root).as_posix()
-        mode = stat.S_IMODE(os.lstat(path).st_mode)
-        if path.is_symlink():
-            entries.append(
-                {"path": relative, "type": "symlink", "mode": mode, "target": os.readlink(path)}
-            )
-        elif path.is_dir():
-            entries.append({"path": relative, "type": "directory", "mode": mode})
-        elif path.is_file():
-            entries.append(
-                {"path": relative, "type": "file", "mode": mode, "sha256": _file_sha256(path)}
-            )
-        else:
-            entries.append({"path": relative, "type": "other", "mode": mode})
-    return entries
 
 
 def _file_sha256(path: Path) -> str:
@@ -127,7 +107,10 @@ def _implementation_identity(attempt_executor: object) -> dict[str, object]:
         for path in sorted(package_root.rglob("*.py"))
     ]
     executor_target = attempt_executor if inspect.isfunction(attempt_executor) else type(attempt_executor)
-    executor_source = inspect.getsourcefile(executor_target)
+    try:
+        executor_source = inspect.getsourcefile(executor_target)
+    except TypeError:
+        executor_source = None
     executor_path = Path(executor_source).resolve() if executor_source else None
     executor_identity: dict[str, object] = {
         "module": getattr(executor_target, "__module__", type(attempt_executor).__module__),
@@ -135,6 +118,7 @@ def _implementation_identity(attempt_executor: object) -> dict[str, object]:
         "source_sha256": (
             _file_sha256(executor_path) if executor_path is not None and executor_path.is_file() else None
         ),
+        "config": _attempt_executor_config(attempt_executor, executor_path, package_root),
     }
     extensions: list[dict[str, object]] = []
     for group, entry_points in sorted(list_all_entry_points().items()):
@@ -160,6 +144,74 @@ def _implementation_identity(attempt_executor: object) -> dict[str, object]:
         "attempt_executor": executor_identity,
         "extensions": extensions,
     }
+
+
+def _attempt_executor_config(
+    attempt_executor: object,
+    executor_path: Path | None,
+    package_root: Path,
+) -> dict[str, object]:
+    contract = getattr(attempt_executor, "__ase_experiment_identity__", None)
+    if contract is not None:
+        if not callable(contract):
+            raise ValueError("attempt executor __ase_experiment_identity__ must be callable")
+        try:
+            value = contract()
+        except Exception as exc:
+            raise ValueError(f"attempt executor identity contract failed: {exc}") from exc
+        normalized = _normalize_stable_identity(value, set(), "executor identity")
+        if not isinstance(normalized, dict):
+            raise ValueError("attempt executor identity contract must return a mapping")
+        return {"kind": "explicit", "value": normalized}
+    if (
+        inspect.isfunction(attempt_executor)
+        and executor_path is not None
+        and executor_path.is_relative_to(package_root)
+    ):
+        return {"kind": "core-function"}
+    raise ValueError(
+        "custom attempt executor must provide a stable __ase_experiment_identity__ contract"
+    )
+
+
+def _normalize_stable_identity(
+    value: object,
+    ancestors: set[int],
+    path: str,
+) -> object:
+    if value is None or isinstance(value, (bool, str, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{path} contains a non-finite float")
+        return value
+    if isinstance(value, dict):
+        identity = id(value)
+        if identity in ancestors:
+            raise ValueError(f"{path} contains a reference cycle")
+        if any(not isinstance(key, str) for key in value):
+            raise ValueError(f"{path} mapping keys must be strings")
+        ancestors.add(identity)
+        try:
+            return {
+                key: _normalize_stable_identity(value[key], ancestors, f"{path}.{key}")
+                for key in sorted(value)
+            }
+        finally:
+            ancestors.remove(identity)
+    if isinstance(value, (list, tuple)):
+        identity = id(value)
+        if identity in ancestors:
+            raise ValueError(f"{path} contains a reference cycle")
+        ancestors.add(identity)
+        try:
+            return [
+                _normalize_stable_identity(item, ancestors, f"{path}[{index}]")
+                for index, item in enumerate(value)
+            ]
+        finally:
+            ancestors.remove(identity)
+    raise ValueError(f"{path} contains unsupported state of type {type(value).__name__}")
 
 
 def _json_sha256(value: object) -> str:

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from agent_sandbox_eval.agents.planner import PlannerExecutorAgent
 from agent_sandbox_eval.agents.react import ReActAgent
 from agent_sandbox_eval.benchmarks.loader import load_task
@@ -50,6 +52,35 @@ class _ObservationProvider:
         return AgentAction(kind="final", message="observed")
 
 
+class _FailingTelemetryProvider:
+    name = "failing-telemetry"
+
+    def __init__(self) -> None:
+        self.records = []
+
+    def plan(self, task):  # type: ignore[no-untyped-def]
+        self.records.append(
+            {
+                "provider": self.name,
+                "model": "fake",
+                "input_tokens": 7,
+                "output_tokens": 3,
+            }
+        )
+        raise ValueError("invalid provider plan")
+
+    def actions(self, task):  # type: ignore[no-untyped-def]
+        return []
+
+    def next_action(self, task, context):  # type: ignore[no-untyped-def]
+        raise AssertionError("next_action should not run")
+
+    def drain_call_records(self):  # type: ignore[no-untyped-def]
+        records = list(self.records)
+        self.records.clear()
+        return records
+
+
 def test_local_solution_provider_builds_actions() -> None:
     task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
     provider = LocalSolutionProvider()
@@ -82,6 +113,19 @@ def test_planner_agent_records_plan(tmp_path: Path) -> None:
 
     assert "Completed" in result.final_answer
     assert "Plan:" in path.read_text(encoding="utf-8")
+
+
+def test_planner_records_provider_usage_when_plan_parsing_fails(tmp_path: Path) -> None:
+    task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
+    tool = _MemoryTool()
+    path = tmp_path / "planner-error.jsonl"
+    context = _Context(task, TrajectoryRecorder(path, "run"), tool)
+
+    with pytest.raises(ValueError, match="invalid provider plan"):
+        PlannerExecutorAgent(_FailingTelemetryProvider()).run(context)
+
+    events = [line for line in path.read_text(encoding="utf-8").splitlines() if '"model_call"' in line]
+    assert len(events) == 1
 
 
 def test_react_agent_passes_observations_back_to_provider(tmp_path: Path) -> None:

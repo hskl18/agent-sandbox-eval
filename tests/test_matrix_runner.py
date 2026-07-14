@@ -10,6 +10,7 @@ import pytest
 from agent_sandbox_eval.benchmarks.loader import load_task
 from agent_sandbox_eval.benchmarks.splits import BenchmarkSplit
 from agent_sandbox_eval.experiments.artifacts import ArtifactValidationError
+from agent_sandbox_eval.experiments.identity import resolve_experiment_identity
 from agent_sandbox_eval.experiments.metrics import empirical_pass_at_k, empirical_pass_power_k
 from agent_sandbox_eval.experiments.runner import (
     AttemptContext,
@@ -112,6 +113,9 @@ class _FixtureExecutor:
             output_tokens=20 if context.cell.id == "local-solution" else 0,
         )
 
+    def __ase_experiment_identity__(self) -> dict[str, str]:
+        return {"executor": "deterministic-fixture-v1"}
+
     @staticmethod
     def _write_raw(context: AttemptContext, passed: bool, failure_mode: str | None) -> None:
         recorder = TrajectoryRecorder(context.trajectory_path, context.run_id, normalize_timestamps=True)
@@ -145,6 +149,42 @@ class _FixtureExecutor:
 
 class _AlternateFixtureExecutor(_FixtureExecutor):
     pass
+
+
+class _ConfiguredFixtureExecutor(_FixtureExecutor):
+    def __init__(self, behavior: str) -> None:
+        super().__init__()
+        self.behavior = behavior
+
+    def __ase_experiment_identity__(self) -> dict[str, str]:
+        return {"executor": "configured-fixture-v1", "behavior": self.behavior}
+
+
+class _UnidentifiedExecutor:
+    def __init__(self, behavior: str) -> None:
+        self.behavior = behavior
+
+    def __call__(self, context: AttemptContext) -> AttemptObservation:
+        raise AssertionError(f"unidentified executor should not run: {context.run_id}")
+
+
+class _InvalidIdentityExecutor(_UnidentifiedExecutor):
+    def __ase_experiment_identity__(self) -> dict[str, object]:
+        return {"executor": "invalid", "state": Path("not-json-safe")}
+
+
+class _FakeOpenAIResponse:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
 
 
 def test_pass_at_k_and_pass_power_k_have_distinct_meanings() -> None:
@@ -204,6 +244,39 @@ def test_resume_fails_closed_when_task_workspace_changes(tmp_path: Path) -> None
         run_matrix(spec, [task], benchmark_split=_split(), attempt_executor=executor)
 
 
+def test_resume_fails_closed_when_task_workspace_mode_changes(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    task = _tasks()[0]
+    workspace = tmp_path / "task-workspace"
+    shutil.copytree(task.workspace, workspace)
+    task = replace(task, workspace=workspace)
+    executor = _FixtureExecutor()
+    run_matrix(spec, [task], benchmark_split=_split(), attempt_executor=executor)
+    (workspace / ".gitkeep").chmod(0o755)
+
+    with pytest.raises(ArtifactValidationError, match="different experiment"):
+        run_matrix(spec, [task], benchmark_split=_split(), attempt_executor=executor)
+
+
+def test_matrix_rejects_workspace_symlink_before_execution(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    task = _tasks()[0]
+    workspace = tmp_path / "task-workspace"
+    workspace.mkdir()
+    external = tmp_path / "external.txt"
+    external.write_text("first\n", encoding="utf-8")
+    (workspace / "input.txt").symlink_to(external)
+    task = replace(task, workspace=workspace)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        run_matrix(
+            spec,
+            [task],
+            benchmark_split=_split(),
+            attempt_executor=_FixtureExecutor(),
+        )
+
+
 def test_resume_fails_closed_when_split_definition_changes(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     tasks = _tasks()[:1]
@@ -232,6 +305,42 @@ def test_resume_fails_closed_when_attempt_implementation_changes(tmp_path: Path)
             tasks,
             benchmark_split=_split(),
             attempt_executor=_AlternateFixtureExecutor(),
+        )
+
+
+def test_same_executor_class_with_different_config_changes_identity_and_rejects_resume(
+    tmp_path: Path,
+) -> None:
+    spec = _spec(tmp_path)
+    tasks = _tasks()[:1]
+    first_executor = _ConfiguredFixtureExecutor("first")
+    second_executor = _ConfiguredFixtureExecutor("second")
+    first_identity = resolve_experiment_identity(spec, tasks, _split(), first_executor)
+    second_identity = resolve_experiment_identity(spec, tasks, _split(), second_executor)
+
+    assert first_identity.fingerprint != second_identity.fingerprint
+    run_matrix(spec, tasks, benchmark_split=_split(), attempt_executor=first_executor)
+    with pytest.raises(ArtifactValidationError, match="different experiment"):
+        run_matrix(spec, tasks, benchmark_split=_split(), attempt_executor=second_executor)
+
+
+def test_custom_executor_without_stable_identity_contract_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="stable __ase_experiment_identity__ contract"):
+        run_matrix(
+            _spec(tmp_path),
+            _tasks()[:1],
+            benchmark_split=_split(),
+            attempt_executor=_UnidentifiedExecutor("hidden-state"),
+        )
+
+
+def test_executor_identity_contract_with_unsupported_state_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unsupported state of type .*Path"):
+        run_matrix(
+            _spec(tmp_path),
+            _tasks()[:1],
+            benchmark_split=_split(),
+            attempt_executor=_InvalidIdentityExecutor("invalid-state"),
         )
 
 
@@ -340,6 +449,76 @@ def test_runner_exception_preserves_partial_model_call_usage(
 
     with pytest.raises(ArtifactValidationError, match="marker evidence mismatch"):
         regenerate_matrix_reports(spec, _tasks()[:1], benchmark_split=_split())
+
+
+def test_openai_parse_failure_preserves_billable_usage_exactly_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = _spec(tmp_path)
+    oracle_cell = next(cell for cell in base.matrix if cell.id == "oracle")
+    openai_cell = replace(
+        oracle_cell,
+        id="openai-react",
+        agent=replace(oracle_cell.agent, name="react"),
+        model=replace(
+            oracle_cell.model,
+            provider="openai-responses",
+            name="fake-openai-model",
+            pricing=PricingSpec(
+                source="fake-openai-pricing",
+                input_per_million_usd=2.0,
+                output_per_million_usd=8.0,
+            ),
+        ),
+    )
+    spec = replace(
+        base,
+        trials=1,
+        concurrency=1,
+        retry=replace(base.retry, max_attempts=1),
+        environment=replace(base.environment, docker_image="python:3.13-slim"),
+        matrix=[openai_cell],
+        artifacts=replace(base.artifacts, root=tmp_path / "openai-error-matrix"),
+    )
+
+    def fake_urlopen(request, timeout):  # type: ignore[no-untyped-def]
+        return _FakeOpenAIResponse(
+            {
+                "id": "resp_invalid_json",
+                "output_text": "not-json",
+                "usage": {"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+            }
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("OPENAI_API_KEY", "fake-test-key")
+    monkeypatch.setenv("OPENAI_INPUT_COST_PER_1M", "2")
+    monkeypatch.setenv("OPENAI_OUTPUT_COST_PER_1M", "8")
+
+    result = run_matrix(spec, _tasks()[:1], benchmark_split=_split())
+    marker_path = next(spec.artifacts.root.glob("raw/**/*.attempt.json"))
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    raw_path = spec.artifacts.root / marker["raw_path"]
+    events = [json.loads(line) for line in raw_path.read_text(encoding="utf-8").splitlines()]
+    model_calls = [event for event in events if event["event_type"] == "model_call"]
+    attempt_result = next(event for event in events if event["event_type"] == "attempt_result")
+    cell = result.summary["cells"][0]
+
+    assert len(model_calls) == 1
+    assert model_calls[0]["response_id"] == "resp_invalid_json"
+    assert model_calls[0]["input_tokens"] == 120
+    assert model_calls[0]["output_tokens"] == 30
+    assert model_calls[0]["estimated_cost_usd"] == pytest.approx(0.00048)
+    assert marker["input_tokens"] == 120
+    assert marker["output_tokens"] == 30
+    assert marker["estimated_cost_usd"] == pytest.approx(0.00048)
+    assert attempt_result["input_tokens"] == 120
+    assert attempt_result["output_tokens"] == 30
+    assert attempt_result["estimated_cost_usd"] == pytest.approx(0.00048)
+    assert cell["tokens"]["all_attempt_input"] == 120
+    assert cell["tokens"]["all_attempt_output"] == 30
+    assert cell["estimated_cost_usd"] == pytest.approx(0.00048)
 
 
 def test_cost_is_estimated_only_with_explicit_pricing_source(tmp_path: Path) -> None:
