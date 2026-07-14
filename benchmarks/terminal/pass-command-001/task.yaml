@@ -9,8 +9,10 @@ allowed_tools:
   - shell
 success:
   type: command
-  command: test -f answer.txt && grep -q ready answer.txt
+  command: test "$(cat answer.txt)" = ready
   expected_exit_code: 0
+  negative_assertions:
+    - test "$(wc -l < answer.txt)" -eq 1
 limits:
   timeout_seconds: 30
   max_tool_calls: 5
@@ -23,4 +25,3 @@ tags:
 solution:
   commands:
     - printf 'ready\n' > answer.txt
-

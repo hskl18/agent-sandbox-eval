@@ -4,7 +4,8 @@ Tasks are defined by `task.yaml` files under `benchmarks/<benchmark>/<task-id>/`
 
 Required fields:
 
-- `schema_version`: manifest schema version. Current value: `1`.
+- `schema_version`: manifest schema version.
+  Current value: `1`.
 - `id`: stable task id.
 - `benchmark`: benchmark family.
 - `title`: short human-readable title.
@@ -43,12 +44,26 @@ success:
     items.0.name: alpha
 ```
 
-`json_fields` compares exact JSON values at dot-separated selectors. List indexes are written as numeric path segments.
+`json_fields` compares exact JSON values at dot-separated selectors.
+List indexes are written as numeric path segments.
+
+Success criteria can include commands that reject plausible incorrect output:
+
+```yaml
+success:
+  type: command
+  command: test "$(cat answer.txt)" = ready
+  negative_assertions:
+    - test "$(wc -l < answer.txt)" -eq 1
+```
+
+Every negative assertion must exit with code 0 for the task to pass.
 
 Optional fields:
 
 - `setup`: commands run before the agent starts.
-- `allowed_tools`: tool names exposed to the agent for the task. Setup and grading still run through the sandbox outside the agent tool surface.
+- `allowed_tools`: tool names exposed to the agent for the task.
+  Setup and grading still run through the sandbox outside the agent tool surface.
 - `limits`: timeout, memory, CPU, PID, network, and max tool-call settings.
 - `tags`: search and reporting tags.
 - `solution.commands`: commands used by the `scripted` validation agent.
@@ -71,6 +86,16 @@ Validate all bundled tasks with:
 ```bash
 ase validate-tasks --benchmark all
 ```
+
+Lint task authoring risks with:
+
+```bash
+ase lint-tasks --benchmark all
+ase lint-tasks --benchmark all --probe-setup
+```
+
+The static lint checks weak graders, missing rejection assertions, solution metadata outside `allowed_tools`, and agent-writable expected outputs.
+The Docker probe also rejects tasks whose baseline workspace or setup commands already satisfy the grader.
 
 The optional `limits.pids_limit` value defaults to 256 and must be between 1 and 256.
 It bounds the number of processes available to a task container.

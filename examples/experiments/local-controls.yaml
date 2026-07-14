@@ -1,0 +1,66 @@
+schema_version: 1
+name: v0.2-local-controls
+seed: 20260714
+trials: 2
+concurrency: 3
+benchmark:
+  name: all
+  split: smoke
+budgets:
+  timeout_seconds: 45
+  max_tool_calls: 10
+  max_input_tokens: null
+  max_output_tokens: null
+  max_estimated_cost_usd: null
+retry:
+  max_attempts: 1
+  on:
+    - environment_setup_failure
+    - runner_error
+environment:
+  id: docker-python-3.13-slim
+  docker_image: python:3.13-slim
+  metadata:
+    network: task-controlled
+    container_root: read-only
+    capabilities: dropped
+artifacts:
+  root: ../../runs/v0.2-local-controls
+  raw_dir: raw
+  summary_json: summary.json
+  report_markdown: report.md
+  normalize_timestamps: true
+matrix:
+  - id: scripted-oracle
+    agent:
+      name: scripted
+      metadata:
+        evidence_class: harness-control
+    model:
+      provider: local-solution
+      name: local-solution
+      metadata:
+        model_calls: false
+      pricing: null
+  - id: react-local-solution
+    agent:
+      name: react
+      metadata:
+        evidence_class: harness-control
+    model:
+      provider: local-solution
+      name: local-solution
+      metadata:
+        model_calls: false
+      pricing: null
+  - id: noop-negative-control
+    agent:
+      name: noop
+      metadata:
+        evidence_class: negative-control
+    model:
+      provider: local-solution
+      name: local-solution
+      metadata:
+        model_calls: false
+      pricing: null

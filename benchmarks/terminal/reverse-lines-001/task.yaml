@@ -8,7 +8,7 @@ setup: []
 allowed_tools: [shell, python]
 success:
   type: command
-  command: "cmp -s reversed.txt expected.txt"
+  command: "python -c \"assert open('reversed.txt').read() == 'third\\nsecond\\nfirst\\n'\""
   expected_exit_code: 0
 limits:
   timeout_seconds: 30

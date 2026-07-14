@@ -10,8 +10,8 @@ from agent_sandbox_eval.model_providers.local_solution import LocalSolutionProvi
 from agent_sandbox_eval.model_providers.openai_responses import OpenAIResponsesProvider
 
 
-def get_agent(name: str, provider_name: str = "local-solution") -> Agent:
-    provider = get_provider(provider_name)
+def get_agent(name: str, provider_name: str = "local-solution", model: str | None = None) -> Agent:
+    provider = get_provider(provider_name, model=model)
     if name == "noop":
         return NoopAgent()
     if name == "scripted":
@@ -26,12 +26,12 @@ def get_agent(name: str, provider_name: str = "local-solution") -> Agent:
     raise ValueError(f"unknown agent: {name}")
 
 
-def get_provider(name: str):
+def get_provider(name: str, model: str | None = None):
     if name == "local-solution":
         return LocalSolutionProvider()
     if name == "openai-responses":
-        return OpenAIResponsesProvider()
+        return OpenAIResponsesProvider(model=model)
     factory = load_entry_point(PROVIDER_ENTRY_POINT_GROUP, name)
     if factory is not None:
-        return factory()
+        return factory() if model is None else factory(model=model)
     raise ValueError(f"unknown provider: {name}")

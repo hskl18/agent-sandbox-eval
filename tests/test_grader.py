@@ -133,3 +133,24 @@ def test_json_fields_grader_reports_mismatch() -> None:
     assert not result.passed
     assert result.failure_mode
     assert any("status" in item for item in result.evidence)
+
+
+def test_negative_assertion_rejects_extra_output() -> None:
+    _skip_without_docker()
+    task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
+    task = task.__class__(
+        **{
+            **task.__dict__,
+            "success": SuccessCriteria(
+                type="command",
+                command="grep -q ready answer.txt",
+                negative_assertions=["test \"$(wc -l < answer.txt)\" -eq 1"],
+            ),
+        }
+    )
+    with DockerSandbox(task) as sandbox:
+        sandbox.run("printf 'ready\\nextra\\n' > answer.txt")
+        result = Grader().grade(task, sandbox, [])
+
+    assert not result.passed
+    assert any("Negative assertion exit code: 1" in item for item in result.evidence)

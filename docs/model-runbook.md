@@ -3,15 +3,17 @@
 No real-model benchmark result is checked into this repository yet.
 The `openai-responses` provider has mocked unit coverage, but mocked calls do not count as agent capability evidence.
 
-Run this protocol only after an operator supplies a test key, approves the model choices, and accepts the expected API cost.
+Run this protocol only after an operator supplies a test key, approves the exact model identifiers, and accepts the expected API cost.
 
-## Fixed protocol
+## Fixed Protocol
 
-1. Use one repository commit and one Docker version for every configuration.
-2. Run the same benchmark pack with `react` and `planner` for each model.
+1. Use one repository commit and one Docker environment identity for every configuration.
+2. Run the same benchmark split with ReAct and planner cells for each model.
 3. Run at least three trials per agent and model pair.
-4. Keep task order, tool limits, timeout limits, sandbox image, and prompts unchanged.
-5. Publish every JSONL trajectory, not only successful trials.
+4. Keep task order, seeds, budgets, sandbox image, prompts, and retry policy unchanged.
+5. Publish every attempt marker and referenced JSONL trajectory.
+6. Keep retries limited to explicitly named environment failures.
+7. Keep first-attempt capability metrics separate from retry-assisted outcomes.
 
 Capture the environment before the first run:
 
@@ -19,60 +21,74 @@ Capture the environment before the first run:
 git rev-parse HEAD
 docker version
 python --version
+ase --version
 ase validate-tasks --benchmark all
+ase lint-tasks --benchmark all --probe-setup
 ```
 
-Configure the provider and explicit cost rates from the provider pricing source used on the run date:
+## Configure the Experiment
+
+Create an operator-owned experiment YAML from [`examples/experiments/local-controls.yaml`](../examples/experiments/local-controls.yaml).
+Do not commit API keys or credentials.
+
+Set these fields for a live run:
+
+- Set `benchmark.name` and `benchmark.split` to the approved task set.
+- Set `trials` to at least `3`.
+- Set every model `name` to an exact provider model identifier rather than a floating alias.
+- Set each model `provider` to `openai-responses`.
+- Record the provider name, model release, run date, and relevant API settings in model metadata.
+- Add a `pricing` mapping with nonnegative input and output rates and the exact pricing source.
+- Set token and cost budgets approved by the operator.
+- Set retries to environment-only failure modes.
+
+Pricing must be explicit in the experiment file:
+
+```yaml
+pricing:
+  source: https://provider.example/pricing-observed-on-YYYY-MM-DD
+  input_per_million_usd: 0.0
+  output_per_million_usd: 0.0
+```
+
+Replace the example rates and source with the approved provider values.
+Do not publish estimated cost when the pricing source is missing.
+Token and cost ceilings are post-attempt validation checks rather than preauthorization controls.
+The operator must approve the maximum possible provider spend before starting the matrix.
+
+## Run
+
+Export only the operator-supplied credential:
 
 ```bash
-export OPENAI_API_KEY=example_operator_supplied_key
-export OPENAI_INPUT_COST_PER_1M=example_input_rate
-export OPENAI_OUTPUT_COST_PER_1M=example_output_rate
+export OPENAI_API_KEY=operator_supplied_value
+ase run-matrix path/to/operator-experiment.yaml
 ```
 
-The harness stores token counts, request latency, model identifier, and estimated cost in `model_call` trajectory events.
+The matrix runner stores token counts, request latency, provider, model, trial seed, retry accounting, and estimated cost in experiment artifacts.
 It does not store the API key, full provider response, or raw hidden reasoning.
 
-## Run one model configuration
-
-Set an exact model identifier instead of a floating alias when the provider offers one.
-
-```bash
-export OPENAI_MODEL=example_exact_model_id
-
-for trial in 1 2 3; do
-  ase run \
-    --agent react \
-    --provider openai-responses \
-    --benchmark all \
-    --out "runs/model-a-react-trial-${trial}.jsonl"
-
-  ase run \
-    --agent planner \
-    --provider openai-responses \
-    --benchmark all \
-    --out "runs/model-a-planner-trial-${trial}.jsonl"
-done
-```
-
-Repeat the same commands with a second approved model identifier and a separate output prefix.
+Run the same command after an interruption.
+Completed units resume only after their attempt markers, hashes, and raw event streams validate.
+Corrupt or missing raw evidence stops the run.
 
 ## Report
 
-Generate one report per trajectory and one comparison across all trials.
+Regenerate the machine-readable and Markdown reports from raw artifacts with:
 
 ```bash
-ase report runs/model-a-react-trial-1.jsonl --out reports/model-a-react-trial-1.md
-ase compare runs/model-*-trial-*.jsonl --out reports/model-comparison.md
+ase matrix-report path/to/operator-experiment.yaml
 ```
 
-The published summary should include:
+The published summary must include:
 
-- pass@1 and repeated-trial pass rate by task and configuration;
-- latency, model calls, input tokens, output tokens, tool calls, and estimated cost;
-- timeout, invalid-action, sandbox, and task or grader failure rates;
-- the deterministic failure taxonomy and representative trace evidence;
-- the repository commit, task-pack commit, Python version, Docker version, and sandbox image.
+- pass@1, pass@k, pass^k, and per-task Bernoulli variance;
+- observed first-attempt pass rate and the capability-eligible denominator;
+- retry attempts, retry-assisted passes, and eventual passes;
+- environment, budget, task, and capability failure distributions;
+- latency, input tokens, output tokens, and estimated cost with its pricing source;
+- repository commit, task split, Docker image, environment identity, and experiment fingerprint;
+- every raw trajectory and attempt marker needed to regenerate the summary.
 
-Do not compare a scripted oracle or `local-solution` run with a model run as if both measure agent reasoning.
+Do not compare a scripted oracle or local-solution run with a model run as if both measure agent reasoning.
 Keep oracle, deterministic harness, negative-control, and live-model sections visually separate.

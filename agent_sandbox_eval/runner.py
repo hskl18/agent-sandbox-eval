@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from agent_sandbox_eval.agents.base import Agent, AgentContext
 from agent_sandbox_eval.benchmarks.schema import Task
@@ -27,18 +27,24 @@ class Runner:
         docker_image: str = "python:3.13-slim",
         keep_workspaces: bool = False,
         extra_tool_factories: dict[str, ToolFactory] | None = None,
+        run_id: str | None = None,
+        normalize_timestamps: bool = False,
+        run_metadata: dict[str, Any] | None = None,
     ) -> None:
         self.agent = agent
         self.output_path = output_path
         self.docker_image = docker_image
         self.keep_workspaces = keep_workspaces
         self.extra_tool_factories = extra_tool_factories or {}
+        self.run_id = run_id
+        self.normalize_timestamps = normalize_timestamps
+        self.run_metadata = run_metadata or {}
         self.grader = Grader()
 
     def run(self, tasks: list[Task]) -> RunSummary:
-        run_id = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ") + f"-{self.agent.name}"
-        recorder = TrajectoryRecorder(self.output_path, run_id)
-        recorder.record("run_start", agent=self.agent.name, task_count=len(tasks))
+        run_id = self.run_id or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%SZ") + f"-{self.agent.name}"
+        recorder = TrajectoryRecorder(self.output_path, run_id, normalize_timestamps=self.normalize_timestamps)
+        recorder.record("run_start", agent=self.agent.name, task_count=len(tasks), **self.run_metadata)
         passed = 0
 
         for task in tasks:

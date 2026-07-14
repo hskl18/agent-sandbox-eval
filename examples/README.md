@@ -1,6 +1,7 @@
 # Examples
 
-This directory documents reproducible example runs. Generated trajectories and reports are intentionally written to `runs/` and `reports/`, which are ignored by git.
+This directory documents reproducible example runs.
+Generated trajectories and reports are intentionally written to `runs/` and `reports/`, which are ignored by git.
 
 ## Full Local Benchmark
 
@@ -40,3 +41,14 @@ Expected failure mode:
 no_progress
 ```
 
+## Repeated Local Controls
+
+```bash
+ase run-matrix examples/experiments/local-controls.yaml
+ase run-matrix examples/experiments/local-controls.yaml
+ase matrix-report examples/experiments/local-controls.yaml
+```
+
+The second run validates and resumes completed task trials.
+It reports zero newly executed attempts when the first run completed cleanly.
+The generated JSON and Markdown reports keep retries and environment-invalid trials separate from first-attempt capability metrics.
