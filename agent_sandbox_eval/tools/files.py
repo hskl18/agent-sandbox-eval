@@ -44,7 +44,7 @@ class FileWriteTool:
         path.parent.mkdir(parents=True, exist_ok=True)
         write_workspace_text(path, text)
         context.recorder.record("tool_call", context.task.id, tool=self.name, input={"path": input.get("path")})
-        result = ToolResult(stdout=f"wrote {path.relative_to(self.workspace)}")
+        result = ToolResult(stdout=f"wrote {path.relative_to(self.workspace.resolve())}")
         if hasattr(context, "tool_results"):
             context.tool_results.append(result)
         context.recorder.record(
