@@ -14,6 +14,8 @@ Agent Sandbox Eval runs agent-generated commands and benchmark code. Treat tasks
 - For reviewed images without declared volumes, only `/workspace` and a constrained `/tmp` tmpfs are writable by sandboxed commands.
 - Task manifests define time, memory, CPU, and process-count limits.
 - Docker's built-in seccomp profile is requested explicitly.
+- Each command's container is removed before the harness continues, and a run stops with an error when that cannot be confirmed.
+- Host-side tools refuse special files and symbolic links that leave the workspace, which relies on no container running at the same time.
 
 These controls reduce common privilege-escalation, fork-bomb, and filesystem-write risks.
 They do not make Docker a perfect security boundary and do not prove containment against container-runtime or kernel vulnerabilities.

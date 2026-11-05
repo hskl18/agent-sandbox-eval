@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import os
 import shutil
@@ -10,6 +11,34 @@ from typing import Any
 
 class WorkspaceValidationError(ValueError):
     pass
+
+
+def read_workspace_text(path: Path) -> str:
+    with os.fdopen(_open_regular_file(path, os.O_RDONLY), "r", encoding="utf-8") as file:
+        return file.read()
+
+
+def write_workspace_text(path: Path, text: str) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    with os.fdopen(_open_regular_file(path, flags), "w", encoding="utf-8") as file:
+        file.write(text)
+
+
+def _open_regular_file(path: Path, flags: int) -> int:
+    # Sandboxed code controls this directory: following a symlink would reach host files, and a FIFO would hang the host.
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        raise WorkspaceValidationError("this platform cannot open workspace files without following symbolic links")
+    try:
+        descriptor = os.open(path, flags | nofollow | os.O_NONBLOCK, 0o666)
+    except OSError as exc:
+        if exc.errno in {errno.ELOOP, errno.ENXIO}:
+            raise WorkspaceValidationError(f"workspace path must be a regular file: {path}") from exc
+        raise
+    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+        os.close(descriptor)
+        raise WorkspaceValidationError(f"workspace path must be a regular file: {path}")
+    return descriptor
 
 
 def snapshot_task_workspace(source: Path) -> list[dict[str, Any]]:

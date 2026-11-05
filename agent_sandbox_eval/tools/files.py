@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from agent_sandbox_eval.sandbox.workspace import read_workspace_text, write_workspace_text
 from agent_sandbox_eval.tools.base import ToolResult
 
 
@@ -15,7 +16,7 @@ class FileReadTool:
 
     def run(self, input: dict[str, Any], context: Any) -> ToolResult:
         path = self._resolve(str(input.get("path", "")))
-        text = path.read_text(encoding="utf-8")
+        text = read_workspace_text(path)
         context.recorder.record("tool_call", context.task.id, tool=self.name, input=input)
         result = ToolResult(stdout=text)
         if hasattr(context, "tool_results"):
@@ -41,7 +42,7 @@ class FileWriteTool:
         path = self._resolve(str(input.get("path", "")))
         text = str(input.get("content", ""))
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        write_workspace_text(path, text)
         context.recorder.record("tool_call", context.task.id, tool=self.name, input={"path": input.get("path")})
         result = ToolResult(stdout=f"wrote {path.relative_to(self.workspace)}")
         if hasattr(context, "tool_results"):

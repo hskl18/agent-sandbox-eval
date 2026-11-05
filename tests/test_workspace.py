@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
-from agent_sandbox_eval.sandbox.workspace import WorkspaceValidationError, copy_task_workspace
+from agent_sandbox_eval.sandbox.workspace import (
+    WorkspaceValidationError,
+    copy_task_workspace,
+    read_workspace_text,
+    write_workspace_text,
+)
+from agent_sandbox_eval.tools.files import FileReadTool, FileWriteTool
 
 
 def test_workspace_copy_preserves_snapshotted_bytes_and_permissions(tmp_path: Path) -> None:
@@ -46,3 +53,35 @@ def test_workspace_copy_rejects_symlinks_without_dereferencing(
     with pytest.raises(WorkspaceValidationError, match="symbolic links are not supported"):
         copy_task_workspace(workspace, destination)
     assert not destination.exists()
+
+
+def test_workspace_text_helpers_overwrite_regular_files(tmp_path: Path) -> None:
+    path = tmp_path / "file.txt"
+
+    write_workspace_text(path, "a longer first version\n")
+    write_workspace_text(path, "second\n")
+
+    assert read_workspace_text(path) == "second\n"
+
+
+def test_workspace_text_helpers_refuse_symlinks(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("keep\n", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    link.symlink_to(outside)
+
+    with pytest.raises(WorkspaceValidationError, match="regular file"):
+        read_workspace_text(link)
+    with pytest.raises(WorkspaceValidationError, match="regular file"):
+        write_workspace_text(link, "overwritten\n")
+
+    assert outside.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_file_tools_do_not_hang_on_a_fifo(tmp_path: Path) -> None:
+    os.mkfifo(tmp_path / "pipe")
+
+    with pytest.raises(WorkspaceValidationError, match="regular file"):
+        FileReadTool(tmp_path).run({"path": "pipe"}, None)
+    with pytest.raises(WorkspaceValidationError, match="regular file"):
+        FileWriteTool(tmp_path).run({"path": "pipe", "content": "x"}, None)

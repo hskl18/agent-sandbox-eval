@@ -16,6 +16,12 @@ Current behavior:
 - Requests Docker's built-in seccomp profile instead of maintaining a host-specific custom profile.
 - Uses Docker's init process to reap child processes inside the PID limit.
 - Deletes temporary workspaces by default.
+- Removes each command's container after `docker run` returns or times out, because the docker CLI can exit while its container keeps running.
+- Stops the run with an error when it cannot confirm that removal, so host-side tools do not run beside that container.
+- Reports a stopped Docker daemon through that same error, instead of recording every task as failed.
+- Makes `mcp_state` refuse a symbolic link at its state file, and makes `file_read` and `file_write` reject paths that resolve outside the workspace.
+- Makes those three tools refuse FIFOs and other special files.
+- Copies symbolic links as links with `--keep-workspaces`, and skips the copy when any container's removal stayed unconfirmed.
 
 Docker must be running for benchmark execution.
 

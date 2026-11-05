@@ -14,7 +14,7 @@ def summarize_trajectory(trajectory_path: Path) -> dict[str, object]:
     tool_calls = [event for event in events if event.get("event_type") == "tool_call"]
     tool_results = [event for event in events if event.get("event_type") == "tool_result"]
     model_calls = [event for event in events if event.get("event_type") == "model_call"]
-    run_end = next((event for event in reversed(events) if event.get("event_type") == "run_end"), {})
+    run_end: dict[str, Any] = next((event for event in reversed(events) if event.get("event_type") == "run_end"), {})
     total = len(grader_events)
     passed = sum(1 for event in grader_events if event.get("passed"))
     failures = Counter(event.get("failure_mode") or "passed" for event in grader_events)
