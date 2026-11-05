@@ -85,3 +85,27 @@ def test_file_tools_do_not_hang_on_a_fifo(tmp_path: Path) -> None:
         FileReadTool(tmp_path).run({"path": "pipe"}, None)
     with pytest.raises(WorkspaceValidationError, match="regular file"):
         FileWriteTool(tmp_path).run({"path": "pipe", "content": "x"}, None)
+
+
+def test_file_write_reports_a_relative_path_when_the_workspace_is_a_symlink(tmp_path: Path) -> None:
+    # macOS temp directories live under /var, a symlink to /private/var.
+    real = tmp_path / "real"
+    real.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.symlink_to(real)
+
+    class _Recorder:
+        def record(self, *args: object, **kwargs: object) -> None:
+            pass
+
+    class _Task:
+        id = "task"
+
+    class _Context:
+        recorder = _Recorder()
+        task = _Task()
+
+    result = FileWriteTool(workspace).run({"path": "nested/a.txt", "content": "x"}, _Context())
+
+    assert result.stdout == "wrote nested/a.txt"
+    assert (real / "nested" / "a.txt").read_text(encoding="utf-8") == "x"
