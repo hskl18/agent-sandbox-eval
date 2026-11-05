@@ -1,4 +1,7 @@
 from pathlib import Path
+import subprocess
+
+import pytest
 
 from agent_sandbox_eval.agents.base import AgentResult
 from agent_sandbox_eval.agents.registry import get_agent, get_provider
@@ -91,7 +94,14 @@ def test_extension_entry_points(monkeypatch) -> None:  # type: ignore[no-untyped
     assert load_task_pack_roots()["plugin-pack"] == "extra-benchmarks"
 
 
+def _skip_without_docker() -> None:
+    docker = subprocess.run(["docker", "info"], capture_output=True, text=True, check=False)
+    if docker.returncode != 0:
+        pytest.skip("Docker daemon is not available")
+
+
 def test_runner_accepts_extra_tool_factories(tmp_path: Path) -> None:
+    _skip_without_docker()
     task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
     output = tmp_path / "run.jsonl"
     runner = Runner(

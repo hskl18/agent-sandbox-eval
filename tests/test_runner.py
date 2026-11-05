@@ -1,4 +1,7 @@
 from pathlib import Path
+import subprocess
+
+import pytest
 
 from agent_sandbox_eval.agents.base import AgentContext, AgentResult
 from agent_sandbox_eval.benchmarks.loader import load_task
@@ -16,7 +19,14 @@ class _ToolInspectingAgent:
         return AgentResult(final_answer="inspected")
 
 
+def _skip_without_docker() -> None:
+    docker = subprocess.run(["docker", "info"], capture_output=True, text=True, check=False)
+    if docker.returncode != 0:
+        pytest.skip("Docker daemon is not available")
+
+
 def test_runner_exposes_only_allowed_tools(tmp_path: Path) -> None:
+    _skip_without_docker()
     task = load_task(Path("benchmarks/mcp_like/update-status-001/task.yaml"))
     agent = _ToolInspectingAgent()
     output = tmp_path / "run.jsonl"
@@ -27,6 +37,7 @@ def test_runner_exposes_only_allowed_tools(tmp_path: Path) -> None:
 
 
 def test_runner_records_setup_failure_without_running_agent(tmp_path: Path) -> None:
+    _skip_without_docker()
     task = load_task(Path("benchmarks/terminal/pass-command-001/task.yaml"))
     task = task.__class__(**{**task.__dict__, "setup": ["exit 42"]})
     agent = _ToolInspectingAgent()
