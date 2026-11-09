@@ -5,6 +5,20 @@ It provides task manifests, sandboxed execution, JSONL trajectory recording, det
 
 This repository is currently in the early MVP stage described in [`proposal.md`](proposal.md).
 
+```mermaid
+flowchart LR
+    task["Task manifest"] --> sandbox["Docker sandbox"]
+    task --> agent["Agent and provider"]
+    agent <-->|tool calls| sandbox
+    sandbox --> grader["Deterministic grader"]
+    agent -->|recorded steps| trajectory["JSONL trajectory"]
+    grader -->|grader_result| trajectory
+    trajectory --> report["Markdown report"]
+    trajectory --> replay["Replay"]
+```
+
+*The path of a normal run. A setup command that fails records a failed `grader_result` without running the grader, and `ase run-matrix` also writes JSON reports.*
+
 ## Quickstart
 
 ```bash
