@@ -5,6 +5,17 @@ It provides task manifests, sandboxed execution, JSONL trajectory recording, det
 
 This repository is currently in the early MVP stage described in [`proposal.md`](proposal.md).
 
+```mermaid
+flowchart LR
+    task["Task manifest"] --> sandbox["Docker sandbox"]
+    agent["Agent and provider"] <-->|tool calls| sandbox
+    sandbox --> grader["Deterministic grader"]
+    agent -->|recorded steps| trajectory["JSONL trajectory"]
+    grader -->|grader_result| trajectory
+    trajectory --> report["JSON and Markdown reports"]
+    trajectory --> replay["Replay"]
+```
+
 ## Quickstart
 
 ```bash
