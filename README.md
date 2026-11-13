@@ -5,17 +5,12 @@ It provides task manifests, sandboxed execution, JSONL trajectory recording, det
 
 This repository is currently in the early MVP stage described in [`proposal.md`](proposal.md).
 
-```mermaid
-flowchart LR
-    task["Task manifest"] --> sandbox["Docker sandbox"]
-    task --> agent["Agent and provider"]
-    agent <-->|tool calls| sandbox
-    sandbox --> grader["Deterministic grader"]
-    agent -->|recorded steps| trajectory["JSONL trajectory"]
-    grader -->|grader_result| trajectory
-    trajectory --> report["Markdown report"]
-    trajectory --> replay["Replay"]
-```
+## Architecture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+  <img alt="A task manifest sets up a Docker sandbox and an agent with its model provider. The agent makes tool calls in the sandbox, a deterministic grader checks the sandbox afterward, and the agent's recorded steps and the grader_result go into a JSONL trajectory that feeds the Markdown report and replay." src="docs/architecture-light.svg">
+</picture>
 
 *The path of a normal run. A setup command that fails records a failed `grader_result` without running the grader, and `ase run-matrix` also writes JSON reports.*
 
