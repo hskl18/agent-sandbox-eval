@@ -1,0 +1,10 @@
+flowchart TD
+    task["Task manifest"] --> sandbox["Docker sandbox"]
+    task --> agent["Agent and provider"]
+    agent <-->|tool calls| sandbox
+    sandbox --> grader["Deterministic grader"]
+    agent -->|recorded steps| trajectory["JSONL trajectory"]
+    grader -->|grader_result| trajectory
+    trajectory --> report["Markdown report"]
+    trajectory --> replay["Replay"]
+%% Edit this file; the owner renders architecture-light.svg and architecture-dark.svg from it with a shared theme.
