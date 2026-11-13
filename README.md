@@ -9,7 +9,7 @@ This repository is currently in the early MVP stage described in [`proposal.md`]
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
-  <img alt="A task manifest sets up a Docker sandbox and an agent with its model provider. The agent makes tool calls in the sandbox, a deterministic grader checks the sandbox afterward, and the agent's recorded steps and the grader_result go into a JSONL trajectory that feeds the Markdown report and replay." src="docs/architecture-light.svg">
+  <img alt="A task manifest sets up a Docker sandbox and is given to the agent, which may use a model provider. The agent makes tool calls in the sandbox, a deterministic grader checks the sandbox afterward, and the agent's recorded steps and the grader_result go into a JSONL trajectory that feeds the Markdown report and replay." src="docs/architecture-light.svg">
 </picture>
 
 *The path of a normal run. A setup command that fails records a failed `grader_result` without running the grader, and `ase run-matrix` also writes JSON reports.*

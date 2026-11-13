@@ -1,4 +1,4 @@
-flowchart LR
+flowchart TD
     task["Task manifest"] --> sandbox["Docker sandbox"]
     task --> agent["Agent and provider"]
     agent <-->|tool calls| sandbox
